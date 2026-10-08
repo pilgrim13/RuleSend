@@ -38,6 +38,27 @@
   }
   function badge(text, tone = 'neutral') { return node('span', `badge ${tone}`, text); }
   function textLink(text, handler) { return button(text, handler, 'ghost compact'); }
+  function commandSnippet(command, label) {
+    const snippet = node('div');
+    const feedback = node('span', 'field-hint'); feedback.setAttribute('role', 'status');
+    let fallback;
+    const copy = button('Copy command', async () => {
+      try {
+        await navigator.clipboard.writeText(command);
+        feedback.textContent = 'Copied.';
+      } catch (_) {
+        feedback.textContent = 'Clipboard access is unavailable. Copy the selected command below.';
+        if (!fallback) {
+          fallback = node('textarea'); fallback.value = command; fallback.readOnly = true; fallback.spellcheck = false;
+          snippet.append(field('Command to copy manually', fallback));
+        }
+        fallback.focus(); fallback.select();
+      }
+    }, 'compact');
+    copy.setAttribute('aria-label', `Copy ${label} command`);
+    append(snippet, node('pre', 'command', command), append(node('div', 'actions'), copy, feedback));
+    return snippet;
+  }
   function date(value) {
     const d = new Date(value);
     return Number.isFinite(d.getTime()) && d.getUTCFullYear() > 1970 ? d : null;
@@ -635,7 +656,7 @@
             catch (_) { toast('Clipboard access is unavailable. Select and copy the token above.', true); }
           }, 'compact'); body.append(copy);
           const hub = location.origin;
-          body.append(node('pre', 'command', `./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${hub} --name "My device" \\\n  --token-file /private/path/enrollment-token`));
+          body.append(commandSnippet(`./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${hub} --name "My device" \\\n  --token-file /private/path/enrollment-token`, 'enroll'));
           append(body, note('The Agent stores its own device credential after enrolling. Closing this dialog removes the displayed enrollment token.'));
           append(footer, button('Close', closeDialog), button('View binding guide', () => showGuide(ids), 'primary'));
           await refresh();
@@ -670,16 +691,18 @@
     const allowedPacks = [...new Set(ids)].map(id => pack(id)).filter(Boolean);
     const {body, footer} = openDialog('Connect a device, deliberately.', true);
     body.append(node('p', '', 'Run these commands from the folder containing your built ./rulesend executable on the receiving device. Keep the same Agent data directory for every command. Replace the token-file and target paths with your own choices.'));
-    const enroll = append(node('section', 'guide-step'), node('h3', '', '1. Enroll with a one-time token'), node('p', '', 'Create a token with Add device and save it to a private local file. Skip this step if the device is already enrolled.'), node('pre', 'command', `./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${location.origin} --name "My device" \\\n  --token-file /private/path/enrollment-token`));
+    const enroll = append(node('section', 'guide-step'), node('h3', '', '1. Enroll with a one-time token'), node('p', '', 'Create a token with Add device and save it to a private local file. Skip this step if the device is already enrolled.'), commandSnippet(`./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${location.origin} --name "My device" \\\n  --token-file /private/path/enrollment-token`, 'enroll'));
     body.append(enroll);
     const bind = append(node('section', 'guide-step'), node('h3', '', '2. Bind an explicit target'), node('p', '', 'Choose an existing parent folder and a target file for each pack. Use codex, claude, or markdown as the adapter. Each target file can hold only one RuleSend pack; do not bind different packs to the same file.'));
     bind.append(node('p', '', explicitScope ? 'These are the packs selected for this device’s enrollment.' : 'Only bind packs allowed by this device’s enrollment. The pack IDs below come from your workspace.'));
     allowedPacks.forEach((p, index) => {
-      append(bind, node('h3', '', p.name), append(node('p', 'mono small'), 'Pack ID: ', node('code', '', p.id)), node('pre', 'command', `./rulesend agent bind --data "$HOME/.local/share/rulesend-agent" \\\n  --pack ${p.id} --adapter codex \\\n  --path /absolute/path/project-${index + 1}/AGENTS.md --label "Project ${index + 1} Codex"`));
+      append(bind, node('h3', '', p.name), append(node('p', 'mono small'), 'Pack ID: ', node('code', '', p.id)), commandSnippet(`./rulesend agent bind --data "$HOME/.local/share/rulesend-agent" \\\n  --pack ${p.id} --adapter codex \\\n  --path /absolute/path/project-${index + 1}/AGENTS.md --label "Project ${index + 1} Codex"`, `bind ${p.name}`));
     });
     if (!allowedPacks.length) bind.append(note('Create a rule pack, then open Add device to choose which packs it can receive.'));
     body.append(bind);
-    body.append(append(node('section', 'guide-step'), node('h3', '', '3. Apply or keep the Agent running'), node('p', '', 'Once explicitly applies published versions and still respects pause. Run follows your policy and sends heartbeats. Stop Run before changing bindings or applying Once. Status can run in another terminal.'), node('pre', 'command', './rulesend agent once --data "$HOME/.local/share/rulesend-agent"\n./rulesend agent run --data "$HOME/.local/share/rulesend-agent"\n./rulesend agent status --data "$HOME/.local/share/rulesend-agent"')));
+    body.append(append(node('section', 'guide-step'), node('h3', '', '3. Preview the changes'), node('p', '', 'Stop Run first. Preview checks in with the Hub, reads your bound files, and shows the planned before-and-after changes. Local file contents stay on the device. No rule file is changed or marked installed. Review any paused, pending, blocked, or conflicting targets before applying.'), commandSnippet('./rulesend agent preview --data "$HOME/.local/share/rulesend-agent"', 'preview')));
+    body.append(append(node('section', 'guide-step'), node('h3', '', '4. Apply when ready'), node('p', '', 'Once applies the published versions and verifies the files. It respects pause. Run this only after reviewing the preview.'), commandSnippet('./rulesend agent once --data "$HOME/.local/share/rulesend-agent"', 'apply once')));
+    body.append(append(node('section', 'guide-step'), node('h3', '', '5. Keep the Agent running'), node('p', '', 'Run follows your delivery policy and sends heartbeats. Stop Run before changing bindings or applying Once.'), commandSnippet('./rulesend agent run --data "$HOME/.local/share/rulesend-agent"', 'run'), node('p', 'mt', 'Status shows saved observations and can run in another terminal.'), commandSnippet('./rulesend agent status --data "$HOME/.local/share/rulesend-agent"', 'status')));
     if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) body.append(note('This Hub URL is local to the current computer. For a different device, use your Hub’s reachable HTTPS address.', 'warning'));
     body.append(note('Existing text outside RuleSend’s managed block is preserved. Local changes inside the block stop automatic replacement. For a remote Hub, use HTTPS. File installation does not prove an AI has loaded or followed the rules.'));
     footer.append(button('Got it', closeDialog, 'primary'));

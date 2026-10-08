@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -30,6 +31,7 @@ const usage = `RuleSend · Your AI rules. Every device.
   rulesend agent enroll --data DIR --hub URL --name NAME --token-file FILE|-
   rulesend agent bind   --data DIR --pack ID --adapter codex|claude|markdown
                        (--path /absolute/file.md | --default) [--label NAME]
+  rulesend agent preview --data DIR [--target ID] [--json]
   rulesend agent once   --data DIR
   rulesend agent run    --data DIR
   rulesend agent status --data DIR
@@ -192,8 +194,33 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Binding saved: %s\nTarget: %s\nPack: %s · adapter: %s\nThe existing file has not changed. Its contents will be preserved outside the new RuleSend block. Run agent once to apply.\n", t.ID, t.Path, t.PackID, t.Adapter)
+		fmt.Printf("Binding saved: %s\nTarget: %s\nPack: %s · adapter: %s\nThe existing file has not changed. Its contents will be preserved outside the new RuleSend block. Run agent preview to review, then agent once to apply.\n", t.ID, t.Path, t.PackID, t.Adapter)
 		return nil
+	case "agent preview":
+		f, data := flags("agent preview")
+		target := f.String("target", "", "preview only this local target ID")
+		asJSON := f.Bool("json", false, "print structured local preview results")
+		if err := parse(f, data, args[2:]); err != nil {
+			return err
+		}
+		a, err := agent.Open(*data)
+		if err != nil {
+			return err
+		}
+		defer a.Close()
+		results, previewErr := a.Preview(ctx, *target)
+		if results != nil {
+			if *asJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				if err := enc.Encode(results); err != nil {
+					return err
+				}
+			} else {
+				fmt.Print(agent.PreviewText(results))
+			}
+		}
+		return previewErr
 	case "agent once", "agent run", "agent status":
 		f, data := flags(args[0] + " " + args[1])
 		if err := parse(f, data, args[2:]); err != nil {

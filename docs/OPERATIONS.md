@@ -38,7 +38,7 @@ The public URL must exactly match the browser origin, including a non-default po
 
 ## Start automatically
 
-First complete a successful manual enrollment, binding, and `agent once`. Then install the reviewed executable at a stable path you control. The templates below do not enroll a device or grant a new path. Replace every placeholder and inspect the resulting file before enabling it.
+First complete a successful manual enrollment, binding, `agent preview`, and `agent once`. Then install the reviewed executable at a stable path you control. The templates below do not enroll a device or grant a new path. Replace every placeholder and inspect the resulting file before enabling it.
 
 ### Linux user service
 
@@ -66,7 +66,7 @@ systemctl --user enable --now rulesend-agent.service
 systemctl --user status rulesend-agent.service
 ```
 
-This normally follows the user's login lifecycle. System-wide operation or lingering requires a separate local policy decision. Stop it with `systemctl --user stop rulesend-agent.service` before changing bindings. Use `disable --now` to remove automatic startup.
+This normally follows the user's login lifecycle. System-wide operation or lingering requires a separate local policy decision. Stop it with `systemctl --user stop rulesend-agent.service` before changing bindings or running a local preview. Use `disable --now` to remove automatic startup.
 
 ### macOS LaunchAgent
 
@@ -107,7 +107,7 @@ Stop an Agent before backing up its entire data directory. It contains a device 
 
 1. Pause the affected pack or stop the Agent. Preserve the current file, Agent state, and backup directory.
 2. Run `agent status` to read the last observation and identify the target, version, and failure. This is a saved observation, not a fresh application-file inspection.
-3. Compare the current file with the relevant backup and the immutable Hub release. Local backups are in `AGENT_DATA/backups/`. Do not blindly restore a whole file over unrelated edits made since the backup.
+3. With the Agent stopped, `agent preview` can inspect the current release without changing files or sending receipts. It refuses pending recovery journals; preserve those for normal recovery. Compare the current file with the relevant backup and the immutable Hub release. Local backups are in `AGENT_DATA/backups/`. Do not blindly restore a whole file over unrelated edits made since the backup.
 4. For a managed-content conflict, preserve your local change separately. Restore the managed section to the version recorded in Agent state, including its original content and markers. Keep outside text intact. If the desired change should be shared, put it in a new Hub draft and publish it.
 5. Retry `agent once`. Confirm both the local file and the new Hub receipt. App loading and behavior still need separate checks.
 

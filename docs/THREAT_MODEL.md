@@ -117,7 +117,7 @@ Registers a concrete target mapping and may remove it. Local approval is indepen
 
 1. The local mapping identifies an approved file and a specific pack/block, not a server-provided arbitrary absolute path.
 2. One managed block per target is the alpha default. Nested and overlapping mappings are rejected.
-3. Initial binding requires explicit local approval and shows the selected target, pack and adapter. The alpha does not display a full before/after content preview; operators review the published pack and existing file separately. Existing markers from another manager are not silently reused.
+3. Initial binding requires explicit local approval and shows the selected target, pack and adapter. The local `agent preview` command displays before/after changes without modifying files, state, or recovery journals. It polls the Hub without uploading local file content or installation receipts. Preview output may contain private outside-block context and should remain local; terminal controls are escaped. Preview is only a snapshot and application revalidates the target. Existing markers from another manager are not silently reused.
 4. All bytes outside the defined managed span are preserved. Newline behavior at insertion boundaries is specified and tested.
 5. Unsupported encoding or ambiguous marker structure is an error, not an invitation to repair the file by guessing.
 6. A local edit inside the block creates drift/conflict, not an automatic publish event.

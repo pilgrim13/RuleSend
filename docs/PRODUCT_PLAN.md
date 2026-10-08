@@ -23,7 +23,7 @@ General folder sync, Windows support, local-edit upload, automatic merging, forc
 1. Start a Hub, sign in locally, and create a small synthetic rule pack.
 2. Save the draft and explicitly publish it. Unpublished content must stay on the Hub.
 3. Create a scoped enrollment token and register an Agent on a receiving device.
-4. On that device, approve a concrete file path and adapter. Binding reports the target without modifying the file; full content preview is not available yet.
+4. On that device, approve a concrete file path and adapter. Binding reports the target without modifying the file. Run a local preview to inspect the actual before/after diff and resolve conflicts before application.
 5. Apply the published version and read the target back. Show its version/hash receipt in the Hub.
 6. Publish a change and observe each target independently. An offline device remains pending or stale until it reports again.
 7. Edit a managed block locally and confirm the content is preserved and reported as a conflict. Review and resolve it locally; there is no automatic overwrite path.
@@ -55,6 +55,7 @@ Browser → Hub: draft → publish → immutable release
 | Authoring | Draft saves do not deploy; stale edits are rejected; published versions remain immutable. |
 | Enrollment | Expired, reused, revoked, or out-of-scope credentials cannot perform unauthorized operations. |
 | Local approval | No file is modified during binding; application uses only explicitly approved regular-file targets. |
+| Preview | Show a local before/after diff without writing files, changing Agent state, or sending installation receipts. |
 | Preservation | Bytes outside the managed block survive updates; local drift and malformed markers stop application without discarding content. |
 | File safety | Unsafe paths, symlinks, unsupported objects, and oversized results are rejected; missing paths do not imply deletion. |
 | Delivery | Two Agents receive a published version; pause blocks both scheduled and explicit application; manual requests survive restart. |
@@ -67,10 +68,10 @@ Independent local editors can race filesystem operations. Backups and checks red
 
 ## Recorded checks and remaining gaps
 
-The current validation record reports passing Go tests, race checks, static analysis, an executable smoke test, and two local Agents on macOS arm64. It also records macOS/Linux cross-builds. These results do not establish runtime behavior on every build target.
+The current validation record reports passing Go tests, race checks, static analysis, an executable smoke test, and two local Agents on macOS arm64. Linux arm64 race tests, vet, build, and executable startup also passed in an unprivileged OrbStack container using Go 1.25.14. The record includes macOS/Linux cross-builds. These results do not establish runtime behavior on every build target.
 
-Real-browser interaction and visual checks, Linux runtime testing, separate physical devices with HTTPS, and installed service/reboot behavior remain unverified in that record. Public CI/release execution must be checked independently; included workflows alone are not evidence of success. App loading and AI behavior remain outside automated verification.
+Real-browser interaction and visual checks, separate physical devices with HTTPS, and installed service/reboot behavior remain unverified in that record. Public CI/release execution must be checked independently; included workflows alone are not evidence of success. App loading and AI behavior remain outside automated verification.
 
 ## Next step
 
-Complete the real-browser authoring-to-installation workflow and fix observed usability or correctness issues. Then run the acceptance scenario on two physical devices over HTTPS, include a Linux runtime where available, and update the validation record with exact environments and outcomes. Expand scope only after this delivery loop is demonstrated.
+Complete the real-browser authoring-to-installation workflow and fix observed usability or correctness issues. Then run the acceptance scenario on two physical devices over HTTPS, include an installed Linux Agent, and update the validation record with exact environments and outcomes. Expand scope only after this delivery loop is demonstrated.
