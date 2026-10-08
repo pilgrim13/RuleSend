@@ -1,6 +1,6 @@
-# Implementation contract · alpha
+# Prototype 1 implementation contract
 
-Product name RuleSend, selected by the user. Original implementation, no Syncthing source copied. Go single binary, SQLite, embedded static web app. Personal open-source account: pilgrim13. No company data, credentials, existing rules or real device inventory enter this repository.
+RuleSend is an original implementation with no Syncthing source copied: one Go binary, SQLite, and an embedded web app. Public product copy and documentation use English. The README stays a short introduction during Prototype 1.
 
 ## First release scope
 
@@ -48,8 +48,8 @@ Managed block delimiter contract (own namespace only):
 `<!-- rulesend:begin pack=ID version=N hash=HEX -->\nCONTENT\n<!-- rulesend:end -->`
 Target has exactly zero or one owned block. Corrupt/duplicate/nested marker, wrong pack, local content hash drift -> conflict. Store exact generated block hash locally; re-read immediately before replacement, back up old whole file locally 0600, temp same directory + fsync + rename; verify new whole file and managed hash. Existing prefix/suffix bytes untouched. Target symlink or traversal forbidden (os.Root plus no-follow checks); parent must already exist; root/mapping safety state outside target folders. File permissions preserve existing; new 0600. Codex resulting file max 32KiB, Claude/custom max128KiB. Crash journal preserves pre/post hash and backup path; restart reconciles known results, ambiguous states conflict. Document filesystem atomicity limitations.
 
-## Ownership and tests
+## Implementation boundaries and tests
 
-Root: shared core, CLI, local agent/app adapters, README/install prompts/release config, integration and browser QA. Backend agent: internal/hub/*.go + its tests (SQLite store/API/auth); no CLI/core/web edits. UI agent: internal/hub/web only. Planner: docs/PRODUCT_PLAN.ko.md + docs/THREAT_MODEL.md.
+`internal/core` defines the shared protocol. `internal/hub` owns persistence and HTTP authorization; `internal/hub/web` owns the English browser UI. `internal/agent` owns local file approval, application, and recovery. `cmd/rulesend` provides the CLI. See [the prototype plan](PRODUCT_PLAN.md) for scope and [validation](VALIDATION.md) for verified behavior.
 
 Must verify draft CAS, single-use enrollment, revocation, scoped reads, receipt validation, stale/offline status, publish immutability, conflict preservation, untouched outside content, unscanned local edits, restart recovery and symlink rejection. Real secrets and personal/company paths never used as fixtures. Multi-device loopback simulation is not real separate-machine deployment; report distinction. Cross compilation is not OS runtime certification.

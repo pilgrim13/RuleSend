@@ -1,4 +1,4 @@
-# Alpha validation
+# Prototype validation
 
 Recorded 2026-10-08 for `0.1.0-alpha.1`. These are implementation checks, not an independent security audit or a certification of AI application behavior.
 
@@ -13,6 +13,8 @@ Recorded 2026-10-08 for `0.1.0-alpha.1`. These are implementation checks, not an
 | Real executable smoke test | Hub initialization/start, embedded HTML/CSS/JS delivery, pack publishing, CLI enrollment/binding/once/status, and a preserved local-edit conflict passed in temporary folders. |
 | Build targets | Built macOS arm64/amd64 and Linux arm64/amd64 executables. Only macOS arm64 runtime was exercised locally. |
 | UI static checks | JavaScript syntax passed. DOM insertion uses safe text APIs; no external runtime dependencies, browser credential storage, or inline handlers. |
+| Prototype UI regression checks | Five deterministic DOM-model cases passed: duplicate saves, edits during an in-flight save, publish/save exclusion, enrollment scope in commands, and stable focus/scroll restoration. These are not browser rendering tests. |
+| Prototype launcher | The local start script built and served English assets, retained authentication, published a synthetic pack, and preserved its version and administrator identity through restart. No application targets were changed by startup. |
 | Browser visual/interaction checks | Not completed in this environment: browser automation was unavailable and native screen/accessibility permission was pending. Responsive appearance, keyboard behavior, and complete browser/API interaction still need a real-browser check. |
 | Physical devices and remote HTTPS | Not deployed or exercised. TLS/security policy is tested in code; an actual remote certificate/proxy deployment remains an operator acceptance check. |
 | Service startup templates | Documented examples only. launchd/systemd installation and reboot behavior have not been verified here. |

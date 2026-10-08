@@ -30,3 +30,15 @@ For a remote Hub use HTTPS. The Hub supports `--tls-cert`, `--tls-key`, and `--p
 Draft editing and publishing are separate actions. Restoring a previous release creates a draft; publish it to produce a new immutable version. A local edit to a managed block is a conflict. The Agent does not silently import or discard that edit. Backups and a replacement journal live in its data directory. Existing conversations and application behavior are not automatically verified.
 
 This alpha has no unbind or remote deletion command. Stop the Agent to stop local processing, pause a pack to stop its application, or revoke a device to reject its future Hub requests. These actions leave installed application files in place. Preserve the Agent data directory and backups when resolving a conflict; deleting state can prevent recognition of an existing managed block. The service does not promise lossless behavior against every unrelated local writer.
+
+## Run Prototype 1 locally
+
+From a source checkout with Go 1.25+ installed:
+
+```sh
+./scripts/run-prototype.sh
+```
+
+This builds the current source and starts a real Hub at `http://127.0.0.1:8787`. Its private data lives outside the checkout at `${XDG_DATA_HOME:-$HOME/.local/share}/rulesend-prototype`. Initialization prints the location of the administrator token file, never the token. Enter its contents locally in the login screen, create a rule pack, publish it, and use the in-app Agent setup guide for explicit test targets. No sample devices or application bindings are created automatically.
+
+Stop with Ctrl+C; restarting reuses the same private Hub data. Set `RULESEND_PROTOTYPE_DATA`, `RULESEND_PROTOTYPE_LISTEN`, or `RULESEND_GO_BIN` to override the private data folder, listen address, or Go executable. The normal Hub TLS/listening restrictions still apply. This helper is for local prototype development, not a service installation.

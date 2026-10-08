@@ -8,6 +8,7 @@
   const state = {packs: [], devices: [], receipts: [], events: []};
   const drafts = new Map();
   const details = new Map();
+  const packWrites = new Map();
   let view = 'overview';
   let selectedPack = null;
   let packTab = 'write';
@@ -202,7 +203,7 @@
       append(item, node('span', 'nav-icon', icon), node('span', 'nav-label', label)); nav.append(item);
     });
     sidebar.append(nav);
-    append(sidebar, append(node('div', 'sidebar-bottom'), append(node('div', 'local-card'), node('strong', '', '↗  A workspace you own'), node('p', '', 'One Hub. Your devices. No hidden cloud.')), append(node('div', 'sidebar-foot'), node('span', '', 'RuleSend / alpha'), node('span', '', 'Self-hosted'))));
+    append(sidebar, append(node('div', 'sidebar-bottom'), append(node('div', 'local-card'), node('strong', '', '↗  A workspace you own'), node('p', '', 'One Hub. Your devices. No hidden cloud.')), append(node('div', 'sidebar-foot'), node('span', '', 'RuleSend / Prototype 1'), node('span', '', 'Self-hosted'))));
     const main = node('main', 'main'); main.id = 'main'; main.tabIndex = -1;
     const breadcrumb = node('div', 'breadcrumb'); breadcrumb.id = 'breadcrumb';
     const live = node('div', 'live-indicator'); live.id = 'hub-connection';
@@ -246,14 +247,14 @@
       Object.keys(state).forEach(key => state[key] = Array.isArray(result[key]) ? result[key] : []);
       state.packs.forEach(p => {
         const d = drafts.get(p.id);
-        if (!d || !d.dirty) drafts.set(p.id, {content: p.content || '', savedContent: p.content || '', baseRevision: p.draftRevision, dirty: false});
+        if ((!d || !d.dirty) && packWrites.get(p.id) !== 'saving') drafts.set(p.id, {content: p.content || '', savedContent: p.content || '', baseRevision: p.draftRevision, dirty: false});
       });
       authenticated = true; connectionError = false; lastRefreshed = new Date().toISOString();
       if (initial || !document.getElementById('content')) renderShell();
       else {
         renderConnection();
         if (view === 'packs' && selectedPack && pack(selectedPack)) refreshEditorStatus();
-        else renderView();
+        else renderView(true);
       }
     } catch (error) {
       if (generation !== authGeneration) return;
@@ -265,7 +266,7 @@
         authenticated = false; renderLogin(error.message);
       } else {
         connectionError = true; renderConnection();
-        if (view === 'packs' && selectedPack) refreshEditorStatus(); else renderView();
+        if (view === 'packs' && selectedPack) refreshEditorStatus(); else renderView(true);
       }
     }
   }
@@ -274,7 +275,21 @@
     if (packId) { selectedPack = packId; packTab = 'write'; }
     renderView();
   }
-  function renderView() {
+  function preserveInteraction(container, update) {
+    const active = document.activeElement;
+    const focusKey = container.contains(active) ? active?.dataset.focusKey : null;
+    const scroll = new Map([...container.querySelectorAll('[data-scroll-key]')].map(el => [el.dataset.scrollKey, el.scrollLeft]));
+    update();
+    if (focusKey) {
+      const matches = [...container.querySelectorAll('[data-focus-key]')].filter(el => el.dataset.focusKey === focusKey);
+      if (matches.length === 1 && !matches[0].disabled) matches[0].focus({preventScroll: true});
+    }
+    container.querySelectorAll('[data-scroll-key]').forEach(el => {
+      if (scroll.has(el.dataset.scrollKey)) el.scrollLeft = scroll.get(el.dataset.scrollKey);
+    });
+  }
+  function keyed(element, key, kind = 'focusKey') { element.dataset[kind] = key; return element; }
+  function renderView(preserve = false) {
     const content = document.getElementById('content'); if (!content) return;
     const labels = {overview: 'Overview', packs: 'Rule packs', devices: 'Devices', activity: 'Activity'};
     const crumb = document.getElementById('breadcrumb'); crumb.replaceChildren(); append(crumb, 'Workspace', node('span', '', '  /  '), node('strong', '', labels[view]));
@@ -282,8 +297,11 @@
       const active = el.dataset.view === view; el.classList.toggle('active', active);
       if (active) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
     });
-    content.replaceChildren();
-    ({overview: renderOverview, packs: renderPacks, devices: renderDevices, activity: renderActivity})[view](content);
+    const render = () => {
+      content.replaceChildren();
+      ({overview: renderOverview, packs: renderPacks, devices: renderDevices, activity: renderActivity})[view](content);
+    };
+    if (preserve) preserveInteraction(content, render); else render();
   }
   function pageHead(title, subtitle, actions) {
     return append(node('div', 'page-head'), append(node('div'), node('div', 'eyebrow', 'YOUR WORKSPACE'), node('h1', '', title), node('p', 'subtitle', subtitle)), actions ? append(node('div', 'head-actions'), actions) : null);
@@ -304,11 +322,11 @@
     return grid;
   }
   function renderOverview(content) {
-    append(content, pageHead('Your rules. Everywhere you work.', 'Write once. Publish deliberately. Know what arrived.', [button('＋ Add device', showEnrollment), button('＋ New rule pack', showNewPack, 'primary')]), renderStats());
+    append(content, pageHead('Your rules. Everywhere you work.', 'Write once. Publish deliberately. Know what arrived.', [keyed(button('＋ Add device', showEnrollment), 'overview-enroll'), keyed(button('＋ New rule pack', showNewPack, 'primary'), 'overview-create')]), renderStats());
     const grid = node('div', 'overview-grid');
-    const packsPanel = panel('Rule packs', 'Your shared instructions, with a clear version history.', textLink('View all →', () => navigate('packs')));
+    const packsPanel = panel('Rule packs', 'Your shared instructions, with a clear version history.', keyed(textLink('View all →', () => navigate('packs')), 'overview-packs'));
     if (state.packs.length) packsPanel.append(packRows(state.packs.slice(0, 4)));
-    else packsPanel.append(empty('Start with your first rule pack', 'Add the instructions you want your AI tools to share. Your draft stays private until you publish.', button('Create a rule pack', showNewPack, 'primary')));
+    else packsPanel.append(empty('Start with your first rule pack', 'Add the instructions you want your AI tools to share. Your draft stays private until you publish.', keyed(button('Create a rule pack', showNewPack, 'primary'), 'overview-create-first')));
     const workflow = panel('A calmer way to keep in sync', 'A clear handoff, from draft to device.');
     const journey = node('div', 'panel-body journey');
     [['01', 'Write & review', 'Keep your shared rules in one Markdown draft.'], ['02', 'Publish a version', 'Send an immutable release to the devices you choose.'], ['03', 'Verify the file', 'See the version, hash, and last check from each target.']].forEach(([num, title, text]) => append(journey, append(node('div', 'step'), node('span', 'step-number', num), append(node('div'), node('h3', '', title), node('p', '', text)))));
@@ -319,18 +337,19 @@
   function packRows(items) {
     const list = node('div', 'pack-list');
     items.forEach(p => {
-      const title = button(p.name, () => navigate('packs', p.id), 'text-button pack-name');
+      const title = keyed(button(p.name, () => navigate('packs', p.id), 'text-button pack-name'), `pack-open:${p.id}`);
       const enrolled = state.devices.filter(d => !d.revoked && (d.packIds || []).includes(p.id)).length;
       const description = p.description || `${enrolled} scoped ${enrolled === 1 ? 'device' : 'devices'} · ${p.mode === 'manual' ? 'Manual delivery' : 'Automatic delivery'}`;
       append(list, append(node('div', 'pack-row'), node('div', 'pack-file', 'MD'), append(node('div', 'grow'), title, node('div', 'pack-detail', description)), badge(p.paused ? 'Paused' : p.publishedVersion ? `v${p.publishedVersion} published` : 'Draft only', p.paused ? 'warning' : p.publishedVersion ? 'good' : 'neutral')));
     }); return list;
   }
   function coveragePanel(filterId) {
-    const panelEl = panel('Device coverage', 'Observed file installation, with separate AI verification.', textLink('Manage devices →', () => navigate('devices')));
+    const panelEl = panel('Device coverage', 'Observed file installation, with separate AI verification.', keyed(textLink('Manage devices →', () => navigate('devices')), `coverage-devices:${filterId || 'all'}`));
     const rows = state.receipts.filter(r => !filterId || r.packId === filterId);
     const relevantDevices = state.devices.filter(d => !filterId || (d.packIds || []).includes(filterId));
     if (!rows.length) {
-      panelEl.append(empty('No file checks yet', relevantDevices.length ? 'Devices are enrolled. Bind a local target and run the Agent to receive the first file check.' : 'Enroll a device, choose a local target, and let your Agent report what is installed.', button(relevantDevices.length ? 'Open setup guide' : 'Add your first device', relevantDevices.length ? showGuide : showEnrollment), true));
+      const setup = relevantDevices.length ? () => showGuide(filterId ? [filterId] : undefined) : () => showEnrollment(filterId ? [filterId] : undefined);
+      panelEl.append(empty('No file checks yet', relevantDevices.length ? 'Devices are enrolled. Bind a local target and run the Agent to receive the first file check.' : 'Enroll a device, choose a local target, and let your Agent report what is installed.', keyed(button(relevantDevices.length ? 'Open setup guide' : 'Add your first device', setup), `coverage-setup:${filterId || 'all'}`), true));
     } else {
       const table = node('table'); const head = node('tr');
       ['Device / target', 'Rule pack', 'File installation', 'AI loaded', 'Behavior', 'Last file check'].forEach(text => head.append(node('th', '', text)));
@@ -343,7 +362,7 @@
         if (r.error) installed.append(node('span', 'cell-sub', `${r.error} Check local Agent status for details.`));
         const check = append(node('td'), seen(r.checkedAt), node('span', 'cell-sub', `Device seen: ${ago(d?.lastSeen)}`));
         body.append(append(node('tr'), target, rule, installed, append(node('td'), badge('Unverified')), append(node('td'), badge('Unverified')), check));
-      }); table.append(body); panelEl.append(append(node('div', 'table-wrap'), table));
+      }); table.append(body); panelEl.append(append(keyed(node('div', 'table-wrap'), `coverage:${filterId || 'all'}`, 'scrollKey'), table));
     }
     panelEl.append(append(node('div', 'coverage-note'), node('strong', '', 'Honest by design'), node('span', '', 'A heartbeat confirms connection. A receipt confirms a file check. Neither proves an AI has read or followed it.')));
     return panelEl;
@@ -391,14 +410,15 @@
     const version = document.getElementById('pack-version');
     if (version) version.replaceChildren(badge(p.publishedVersion ? `v${p.publishedVersion} published` : 'Not published yet', p.publishedVersion ? 'good' : 'neutral'));
     const status = document.getElementById('draft-save-status');
-    if (status) status.textContent = `${d.dirty ? 'Unsaved changes' : 'Draft saved'} · ${new TextEncoder().encode(d.content).length.toLocaleString()} bytes · revision ${d.baseRevision}`;
+    const writing = packWrites.get(selectedPack);
+    if (status) status.textContent = `${writing === 'saving' ? 'Saving draft…' : writing === 'publishing' ? 'Publishing…' : d.dirty ? 'Unsaved changes' : 'Draft saved'} · ${new TextEncoder().encode(d.content).length.toLocaleString()} bytes · revision ${d.baseRevision}`;
     const source = document.getElementById('draft-editor');
     if (source && !d.dirty && source.value !== d.content) {
       source.value = d.content;
       renderMarkdown(document.getElementById('draft-preview'), d.content);
     }
-    const save = document.getElementById('save-draft'); if (save) save.disabled = !d.dirty;
-    const publish = document.getElementById('publish-draft'); if (publish) publish.disabled = d.dirty;
+    const save = document.getElementById('save-draft'); if (save) save.disabled = !!writing || !d.dirty;
+    const publish = document.getElementById('publish-draft'); if (publish) publish.disabled = !!writing || d.dirty;
     const alert = document.getElementById('draft-alert');
     if (alert) {
       alert.replaceChildren();
@@ -410,11 +430,16 @@
     const observed = document.getElementById('policy-observed');
     if (observed) observed.textContent = p.paused ? 'Delivery is paused. Sync now will not resume it.' : !p.publishedVersion ? 'Publish a version before a device can install this pack.' : p.mode === 'manual' ? 'Devices wait for Sync now or a local Agent once command.' : `Agents check this pack every ${p.intervalSeconds} seconds while connected.`;
     const coverage = document.getElementById('pack-coverage');
-    if (coverage && document.activeElement?.id !== 'draft-editor') coverage.replaceChildren(coveragePanel(p.id));
+    if (coverage && document.activeElement?.id !== 'draft-editor') preserveInteraction(coverage, () => coverage.replaceChildren(coveragePanel(p.id)));
   }
   async function saveDraft(id, element) {
-    const d = drafts.get(id); const submitted = d.content; const baseRevision = d.baseRevision;
-    await busy(element, async () => {
+    const d = drafts.get(id);
+    if (!d?.dirty || packWrites.has(id)) return;
+    const submitted = d.content; const baseRevision = d.baseRevision;
+    packWrites.set(id, 'saving');
+    if (element) element.disabled = true;
+    refreshEditorStatus();
+    try {
       try {
         const result = await api(`/api/packs/${encodeURIComponent(id)}/draft`, 'PUT', {baseRevision, content: submitted});
         const current = drafts.get(id); current.baseRevision = result.draftRevision; current.savedContent = submitted; current.dirty = current.content !== submitted;
@@ -424,8 +449,10 @@
         if (err.status === 409) { d.dirty = true; await refresh(); refreshEditorStatus(); toast('This draft changed elsewhere. Review both versions before saving.', true); }
         else showError(err);
       }
-    });
-    refreshEditorStatus();
+    } finally {
+      packWrites.delete(id);
+      refreshEditorStatus();
+    }
   }
   async function getDetail(id) {
     const result = await api(`/api/packs/${encodeURIComponent(id)}`); details.set(id, result); return result;
@@ -500,7 +527,7 @@
     }); name.focus();
   }
   function showPublish(id) {
-    const p = pack(id); const d = drafts.get(id); if (!p || !d || d.dirty) return;
+    const p = pack(id); const d = drafts.get(id); if (!p || !d || d.dirty || packWrites.has(id)) return;
     const baseRevision = d.baseRevision;
     const {body, footer} = openDialog(`Publish version ${p.publishedVersion + 1}?`);
     const scoped = state.devices.filter(item => !item.revoked && (item.packIds || []).includes(id));
@@ -511,13 +538,16 @@
     if (p.paused || p.mode === 'manual') body.append(note(p.paused ? 'Delivery is paused. Publishing will not resume it.' : 'Manual delivery is enabled. Request Sync now when you want devices to apply this version.', 'warning'));
     const error = node('p', 'error-inline'); error.setAttribute('role', 'alert'); body.append(error);
     const confirm = button('Publish version', async () => {
-      await busy(confirm, async () => {
+      if (packWrites.has(id) || drafts.get(id)?.dirty) return;
+      packWrites.set(id, 'publishing');
+      refreshEditorStatus();
+      try { await busy(confirm, async () => {
         try { const release = await api(`/api/packs/${encodeURIComponent(id)}/publish`, 'POST', {baseRevision, message: message.value.trim()}); details.delete(id); closeDialog(); await refresh(); renderView(); toast(`Version ${release.version} published. Installation is tracked separately.`); }
         catch (err) {
           if (err.status === 409) { drafts.get(id).dirty = true; await refresh(); }
           showError(err, error);
         }
-      });
+      }); } finally { packWrites.delete(id); refreshEditorStatus(); }
     }, 'primary'); append(footer, button('Keep as draft', closeDialog), confirm);
   }
   async function showCompare(id) {
@@ -563,9 +593,9 @@
   }
 
   function renderDevices(content) {
-    append(content, pageHead('Every device, accounted for.', 'Connection tells one story. The installed file tells another.', [button('Setup guide', showGuide), button('＋ Add device', showEnrollment, 'primary')]), renderStats());
+    append(content, pageHead('Every device, accounted for.', 'Connection tells one story. The installed file tells another.', [keyed(button('Setup guide', showGuide), 'devices-guide'), keyed(button('＋ Add device', showEnrollment, 'primary'), 'devices-enroll')]), renderStats());
     const section = panel('Enrolled devices', 'A device is online when its heartbeat was received within 60 seconds.');
-    if (!state.devices.length) section.append(empty('Your first device starts here', 'Create a one-time enrollment token, then run the Agent on a device you own.', button('Add a device', showEnrollment, 'primary')));
+    if (!state.devices.length) section.append(empty('Your first device starts here', 'Create a one-time enrollment token, then run the Agent on a device you own.', keyed(button('Add a device', showEnrollment, 'primary'), 'devices-enroll-first')));
     else {
       const table = node('table'); const tr = node('tr'); ['Device', 'Connection', 'Rule packs', 'Last heartbeat', 'Access'].forEach(label => tr.append(node('th', '', label))); table.append(append(node('thead'), tr));
       const body = node('tbody');
@@ -573,9 +603,9 @@
         const heading = append(node('td'), append(node('div', 'device-card-heading'), node('div', 'device-symbol', '▣'), append(node('div'), node('span', 'cell-title', d.name), node('span', 'cell-sub', `${d.platform || 'Platform not reported'} · ${String(d.id).slice(0, 10)}`))));
         const names = (d.packIds || []).map(id => pack(id)?.name || id).join(', ') || 'No packs';
         const status = d.revoked ? badge('Revoked') : fresh(d) ? badge('Online', 'good') : badge(ageSeconds(d.lastSeen) === Infinity ? 'Awaiting first poll' : 'Stale / offline', 'warning');
-        const revoke = button('Revoke access', () => showRevoke(d), 'compact danger'); revoke.disabled = d.revoked;
+        const revoke = keyed(button('Revoke access', () => showRevoke(d), 'compact danger'), `device-revoke:${d.id}`); revoke.disabled = d.revoked;
         body.append(append(node('tr'), heading, append(node('td'), status), node('td', 'wrap', names), append(node('td'), seen(d.lastSeen)), append(node('td'), revoke)));
-      }); table.append(body); section.append(append(node('div', 'table-wrap'), table));
+      }); table.append(body); section.append(append(keyed(node('div', 'table-wrap'), 'devices', 'scrollKey'), table));
     }
     append(content, section, append(node('div', 'list-space'), coveragePanel()));
   }
@@ -605,9 +635,9 @@
             catch (_) { toast('Clipboard access is unavailable. Select and copy the token above.', true); }
           }, 'compact'); body.append(copy);
           const hub = location.origin;
-          body.append(node('pre', 'command', `rulesend agent enroll --data ./rulesend-agent \\\n  --hub ${hub} --name "My device" \\\n  --token-file /private/path/enrollment-token`));
+          body.append(node('pre', 'command', `./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${hub} --name "My device" \\\n  --token-file /private/path/enrollment-token`));
           append(body, note('The Agent stores its own device credential after enrolling. Closing this dialog removes the displayed enrollment token.'));
-          append(footer, button('Close', closeDialog), button('View binding guide', showGuide, 'primary'));
+          append(footer, button('Close', closeDialog), button('View binding guide', () => showGuide(ids), 'primary'));
           await refresh();
         } catch (err) { showError(err, error); }
       });
@@ -634,16 +664,23 @@
       section.append(list);
     } content.append(section);
   }
-  function showGuide() {
+  function showGuide(scopedIds) {
+    const explicitScope = Array.isArray(scopedIds);
+    const ids = explicitScope ? scopedIds : selectedPack ? [selectedPack] : state.packs.map(p => p.id);
+    const allowedPacks = [...new Set(ids)].map(id => pack(id)).filter(Boolean);
     const {body, footer} = openDialog('Connect a device, deliberately.', true);
-    body.append(node('p', '', 'Run these commands on the device where the target files live. Replace the placeholders with your own choices. The Hub cannot choose local paths for you.'));
-    const steps = [
-      ['1. Enroll with a one-time token', 'Create a token with Add device and save it to a private local file.', `rulesend agent enroll --data ./rulesend-agent \\\n  --hub ${location.origin} --name "My device" \\\n  --token-file /private/path/enrollment-token`],
-      ['2. Bind an explicit target', 'Use codex, claude, or markdown as the adapter. The parent directory must already exist. One target file contains one RuleSend pack.', `rulesend agent bind --data ./rulesend-agent \\\n  --pack PACK_ID --adapter codex \\\n  --path /absolute/path/AGENTS.md --label "Project · Codex"`],
-      ['3. Apply or keep the Agent running', 'Once explicitly applies published versions and still respects pause. Run follows your policy and sends heartbeats. Stop Run before using another Agent command.', 'rulesend agent once --data ./rulesend-agent\nrulesend agent run --data ./rulesend-agent\nrulesend agent status --data ./rulesend-agent']
-    ];
-    steps.forEach(([title, text, command]) => body.append(append(node('section', 'guide-step'), node('h3', '', title), node('p', '', text), node('pre', 'command', command))));
-    if (selectedPack && pack(selectedPack)) body.append(append(node('div', 'notice mt'), node('strong', '', 'Selected pack ID: '), node('code', '', selectedPack)));
+    body.append(node('p', '', 'Run these commands from the folder containing your built ./rulesend executable on the receiving device. Keep the same Agent data directory for every command. Replace the token-file and target paths with your own choices.'));
+    const enroll = append(node('section', 'guide-step'), node('h3', '', '1. Enroll with a one-time token'), node('p', '', 'Create a token with Add device and save it to a private local file. Skip this step if the device is already enrolled.'), node('pre', 'command', `./rulesend agent enroll --data "$HOME/.local/share/rulesend-agent" \\\n  --hub ${location.origin} --name "My device" \\\n  --token-file /private/path/enrollment-token`));
+    body.append(enroll);
+    const bind = append(node('section', 'guide-step'), node('h3', '', '2. Bind an explicit target'), node('p', '', 'Choose an existing parent folder and a target file for each pack. Use codex, claude, or markdown as the adapter. Each target file can hold only one RuleSend pack; do not bind different packs to the same file.'));
+    bind.append(node('p', '', explicitScope ? 'These are the packs selected for this device’s enrollment.' : 'Only bind packs allowed by this device’s enrollment. The pack IDs below come from your workspace.'));
+    allowedPacks.forEach((p, index) => {
+      append(bind, node('h3', '', p.name), append(node('p', 'mono small'), 'Pack ID: ', node('code', '', p.id)), node('pre', 'command', `./rulesend agent bind --data "$HOME/.local/share/rulesend-agent" \\\n  --pack ${p.id} --adapter codex \\\n  --path /absolute/path/project-${index + 1}/AGENTS.md --label "Project ${index + 1} Codex"`));
+    });
+    if (!allowedPacks.length) bind.append(note('Create a rule pack, then open Add device to choose which packs it can receive.'));
+    body.append(bind);
+    body.append(append(node('section', 'guide-step'), node('h3', '', '3. Apply or keep the Agent running'), node('p', '', 'Once explicitly applies published versions and still respects pause. Run follows your policy and sends heartbeats. Stop Run before changing bindings or applying Once. Status can run in another terminal.'), node('pre', 'command', './rulesend agent once --data "$HOME/.local/share/rulesend-agent"\n./rulesend agent run --data "$HOME/.local/share/rulesend-agent"\n./rulesend agent status --data "$HOME/.local/share/rulesend-agent"')));
+    if (['localhost', '127.0.0.1', '[::1]'].includes(location.hostname)) body.append(note('This Hub URL is local to the current computer. For a different device, use your Hub’s reachable HTTPS address.', 'warning'));
     body.append(note('Existing text outside RuleSend’s managed block is preserved. Local changes inside the block stop automatic replacement. For a remote Hub, use HTTPS. File installation does not prove an AI has loaded or followed the rules.'));
     footer.append(button('Got it', closeDialog, 'primary'));
   }
