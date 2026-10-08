@@ -1,0 +1,23 @@
+# Build artifacts
+/rulesend
+/rulesend.exe
+/dist/
+/coverage.out
+# Runtime state must stay outside this checkout.
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+admin-token
+config.json
+state.json
+agent.lock
+journal-*.json
+backups/
+rulesend-hub/
+rulesend-agent/
+.env
+.env.*
+*.key
+*.pem
+.DS_Store
