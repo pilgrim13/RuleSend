@@ -4,6 +4,10 @@ RuleSend helps one person publish shared AI instructions and see which devices i
 
 This plan defines scope and acceptance criteria; it is not a completion report. See [validation](VALIDATION.md) for recorded checks, [commands](CLI.md) for current behavior, and the [implementation contract](IMPLEMENTATION_CONTRACT.md) for API details.
 
+The initial rollout proceeds with the verified Codex CLI workflow. Claude Code
+file delivery remains supported; its application loading check is deferred until
+authentication is available.
+
 ## Scope
 
 - One administrator, one self-hosted Hub, multiple Agents; English UI and primary documentation.
@@ -76,4 +80,6 @@ Other browser engines, Linux service installation, whole-machine reboot/login st
 
 ## Next step
 
-Authenticate Claude Code on the test hosts and finish its fresh-session loading check. Verify the intended desktop applications separately, and schedule whole-machine reboot/login startup testing when interruption is acceptable. Exercise an installed Linux Agent/service before claiming that deployment path. Follow the operations migration guidance before taking ownership of real global rules from another manager; the physical-device checks have not performed that migration.
+Prepare a controlled migration of approved global Codex rules, using the verified two-Mac workflow. Review the existing writers, source versions, outside-block content, backups, and rollback path before taking ownership from another manager. The physical-device checks used disposable project files and have not performed that migration.
+
+Verify desktop applications separately, and schedule whole-machine reboot/login startup testing when interruption is acceptable. Exercise an installed Linux Agent/service before claiming that deployment path. Resume the Claude Code loading check when authentication is available; it does not block progress with the verified Codex CLI path.

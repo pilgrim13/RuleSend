@@ -30,6 +30,10 @@ Browser tests used an isolated loopback Hub, private temporary credentials, and 
 
 Physical-device acceptance used the executable from commit `d21a4ba` on macOS 15.7.2 (24G325) and macOS 26.2 (25C56), both arm64. Both installed Codex CLI 0.159.1 sessions resolved their configured default model to `gpt-6-astra`. Claude Code versions were 2.1.105 and 2.1.140; read-only authentication status confirmed neither was signed in. The synthetic marker appeared only in the published instructions, never in the question. Codex also used ephemeral sessions; no unrelated tools or external MCP servers were started for the application probe.
 
+The initial rollout proceeds on the basis of the verified Codex CLI results.
+Claude Code loading remains unverified and is deferred until authentication is
+available.
+
 The physical tests bound only disposable project `AGENTS.md` and `CLAUDE.md` files. Global rule files and Claude settings remained byte-for-byte unchanged. Existing sync jobs and network services were preserved; the added HTTPS handler was removed and the final Tailscale configuration matched the original exactly. Temporary services and the SSH tunnel were stopped. Private fixture data and recovery state remain outside the checkout; no credentials, real device addresses, personal rules, or company content are included here. Service restart and Agent disconnection are distinct from an operating-system reboot or a network outage.
 
 Public-source review found no copied personal/company rules, real device inventory, runtime databases, or credentials. Dependency license texts are included. The declared module baseline is Go 1.25; the included CI matrix is configured to exercise that version on macOS/Linux when the repository is published.
