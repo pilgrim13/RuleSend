@@ -120,6 +120,29 @@ dotfiles or health-monitoring job may still be needed: remove only its rules
 ownership or rules-observation branch, preserving unrelated configuration and
 connectivity checks.
 
+If shared rules also have a reviewed Git source, keep one canonical content
+source and record each application's delivery owner locally. Record the source
+commit, release ID, rule-body hash, pack ID, Agent binding, and any separately
+reviewed publishing tool. Keep these device records, credentials, and backups
+outside source control. Verify the committed manifest and publish the exact
+canonical bytes; the source rule version and Hub pack version have different
+meanings. A repeated identical publication can verify delivery without changing
+the instructions.
+
+Update any rule-management skills and manual installation entry points before
+cutover. A legacy receiver that always manages Codex and Claude together must
+remain stopped when Codex belongs to RuleSend and Claude is deferred. Do not run
+it as-is merely to update the other application. Preserve its policy and state
+for reviewed recovery. When rolling back, unload and park only the verified new
+service definitions before restoring the old writer, so login cannot revive
+both managers.
+
+After restarting services, verify a fresh contact and read-back receipt or a
+subsequent publication. An unchanged saved Agent observation alone does not
+establish that the restarted process reconnected. Check application loading
+separately; skill metadata can use a short root alias that must be resolved to
+the actual installed path.
+
 Remote readers may also have file-specific permissions. Inventory those before
 the target changes; legacy rollback scripts can depend on an old file hash or
 restore a whole permission set. Review a narrowly scoped permission removal

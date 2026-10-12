@@ -80,6 +80,8 @@ Other browser engines, Linux service installation, whole-machine reboot/login st
 
 ## Next step
 
-Prepare a controlled migration of approved global Codex rules, using the verified two-Mac workflow. Review the existing writers, source versions, outside-block content, backups, and rollback path before taking ownership from another manager. The physical-device checks used disposable project files and have not performed that migration.
+A controlled global Codex pilot is now active on the two verified Macs. The approved canonical body is preserved, existing hourly writers are parked with local backups, and RuleSend owns each global Codex target. Fresh CLI input inspection found the full body and both required generic skills; post-restart automatic delivery and new Hub receipts also passed. Claude files and settings were preserved. See the validation record for the precise scope.
+
+Next, improve routine Hub access and installation on receiving devices, including environments that require a scoped userspace-networking transport. Continue observing the pilot and preserve recovery history while simplifying the setup.
 
 Verify desktop applications separately, and schedule whole-machine reboot/login startup testing when interruption is acceptable. Exercise an installed Linux Agent/service before claiming that deployment path. Resume the Claude Code loading check when authentication is available; it does not block progress with the verified Codex CLI path.

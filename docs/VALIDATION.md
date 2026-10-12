@@ -21,6 +21,7 @@ Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser, physical-d
 | Browser regression fixes | Reproduced and fixed restoration overwriting concurrent edits and stale policy controls. Added the missing login skip-link target and fixed 320px navigation overflow. |
 | Physical devices and remote HTTPS | Passed on two physical macOS arm64 computers using a private Tailscale HTTPS proxy and normal certificate verification. Both devices installed Codex and Claude rule files, preserved outside text, previewed without writes, and automatically received published updates with four read-back receipts. Pause, Agent stop/reconnect and catch-up, local conflict preservation, and authenticated revocation were exercised. The receiving computer used a temporary loopback SSH SOCKS proxy for its userspace-networking route; this does not establish direct network reachability in every environment. |
 | Service startup/restart | macOS LaunchAgents for the Hub and both Agents were installed, started, and restarted. PIDs changed, bindings and file bytes survived, and a subsequent version propagated. Test services were unloaded and removed afterward. Whole-machine reboot, login startup, and Linux systemd installation remain unverified. |
+| Controlled global Codex pilot | Passed on both physical Macs after comparing the approved source by content and manifest. Existing hourly writers were unloaded and their exact plists parked with local backups; each global file contains one RuleSend block with the byte-exact canonical body and its original mode. Five generic skill files match their manifest; knowledge vaults and device mappings were excluded. Automatic delivery at a 60-second interval, Hub/Agent/transport process restarts, and a subsequent identical publication produced two fresh read-back receipts. Fresh no-model Codex CLI input contains the entire canonical body and discovers both required skills through verified catalog root aliases. Claude files/settings and broader dotfiles/health jobs were preserved. |
 | Public CI/release | Workflows are included. Their execution and a published binary release are not claimed by this local record. |
 | App loading / AI behavior | Passed for fresh Codex CLI sessions on both physical Macs: deterministic prompt-input inspection found the deployed marker, and actual default-model requests returned the file-only random marker with tools/integrations disabled. Claude Code requests were blocked by missing authentication on both hosts; its rule files were installed, but application loading remains unverified. Desktop applications, existing conversations, other models, and general compliance remain unverified. RuleSend receipts still report file observations rather than these separate application checks. |
 
@@ -35,6 +36,26 @@ Claude Code loading remains unverified and is deferred until authentication is
 available.
 
 The physical tests bound only disposable project `AGENTS.md` and `CLAUDE.md` files. Global rule files and Claude settings remained byte-for-byte unchanged. Existing sync jobs and network services were preserved; the added HTTPS handler was removed and the final Tailscale configuration matched the original exactly. Temporary services and the SSH tunnel were stopped. Private fixture data and recovery state remain outside the checkout; no credentials, real device addresses, personal rules, or company content are included here. Service restart and Agent disconnection are distinct from an operating-system reboot or a network outage.
+
+A later controlled rollout on 2026-10-12 migrated the global Codex targets on
+the same two Macs using the previously tested executable. The private canonical
+rule body was reused unchanged; only its generic management skill gained delivery
+ownership routing, with 113 synthetic tests passing in its separate distribution
+repository. A separately reviewed local publishing bridge verified the clean Git
+release, manifest hashes, and exact Hub body. The Hub and receiving services are
+retained for this pilot, with private per-device rollback backups and ownership
+records. Their machine addresses, personal instructions, credentials, and
+deployment-specific scripts remain outside this public checkout.
+
+The global loading checks used Codex CLI 0.159.1 and made no model requests.
+They establish full instruction input and skill discovery, while the earlier
+synthetic-marker requests remain the behavior evidence. The operator’s active conversation
+received updated instructions during the rollout, which does not establish
+updates to other open conversations. Whole-machine reboot/login startup, other desktop sessions, and
+Claude loading remain unverified. Actual rollback of the live global files was
+not performed; the preserved backups and reviewed recovery tooling remain
+available. Earlier disposable-test cleanup claims refer to those earlier tests,
+not this retained pilot.
 
 Public-source review found no copied personal/company rules, real device inventory, runtime databases, or credentials. Dependency license texts are included. The declared module baseline is Go 1.25; the included CI matrix is configured to exercise that version on macOS/Linux when the repository is published.
 
