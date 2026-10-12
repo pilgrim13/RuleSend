@@ -41,6 +41,7 @@ type server struct {
 	static       http.Handler
 	mu           sync.Mutex
 	attempts     map[string]attempt
+	sourceHash   string
 }
 
 // NewServer supports plaintext only on loopback. Behind a trusted TLS proxy,
@@ -269,6 +270,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.agent(w, r)
 		return
 	}
+	if strings.HasPrefix(r.URL.Path, "/api/source/") {
+		s.sourceAPI(w, r)
+		return
+	}
 	write := r.Method != http.MethodGet && r.Method != http.MethodHead
 	if !s.admin(r, write) {
 		apiError(w, 401, "authentication required")
@@ -466,6 +471,20 @@ func (s *server) pack(w http.ResponseWriter, r *http.Request, parts []string) {
 		}
 		if req.BaseRevision < 1 || !textField(req.Message, 1000, false) {
 			apiError(w, 400, "invalid revision or release message")
+			return
+		}
+		p, err := loadPack(s.store.db, id)
+		if err != nil {
+			storeError(w, err)
+			return
+		}
+		if p.Source != nil {
+			job, err := s.store.queueSource(id, req.BaseRevision, req.Message)
+			if err != nil {
+				sourceError(w, err)
+				return
+			}
+			jsonResponse(w, 202, map[string]any{"publication": job})
 			return
 		}
 		release, err := s.store.publish(id, req.BaseRevision, req.Message)

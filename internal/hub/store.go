@@ -297,7 +297,7 @@ func (s *Store) releaseList(id string) ([]core.Release, error) {
 	return out, rows.Err()
 }
 func (s *Store) snapshot() (core.Snapshot, error) {
-	out := core.Snapshot{Packs: []core.Pack{}, Devices: []core.Device{}, Receipts: []core.Receipt{}, Events: []core.Event{}}
+	out := core.Snapshot{Packs: []core.Pack{}, Devices: []core.Device{}, Receipts: []core.Receipt{}, Events: []core.Event{}, Publications: []core.SourcePublication{}}
 	// A read transaction keeps the dashboard's versions and observations consistent.
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -347,6 +347,15 @@ func (s *Store) snapshot() (core.Snapshot, error) {
 		}
 		if rowErr != nil {
 			return out, rowErr
+		}
+	}
+	for _, pack := range out.Packs {
+		if pack.Source != nil {
+			out.Publications, err = readSourcePublications(tx, true)
+			if err != nil {
+				return out, err
+			}
+			break
 		}
 	}
 	rows, err := tx.Query(`SELECT id,kind,actor,message,created_at FROM events ORDER BY id DESC LIMIT 100`)
@@ -508,7 +517,8 @@ func (s *Store) poll(token string) (core.PollResponse, error) {
 		if err != nil {
 			return out, err
 		}
-		plan := core.Plan{Pack: core.Pack{ID: p.ID, Name: p.Name, Mode: p.Mode, IntervalSeconds: p.IntervalSeconds, Paused: p.Paused, Trigger: p.Trigger}}
+		plan := core.Plan{Pack: core.Pack{ID: p.ID, Name: p.Name, Mode: p.Mode, IntervalSeconds: p.IntervalSeconds, Paused: p.Paused, Trigger: p.Trigger,
+			PublishedVersion: p.PublishedVersion, PublishedHash: p.PublishedHash}}
 		if p.PublishedVersion > 0 {
 			r, err := loadRelease(tx, id, p.PublishedVersion)
 			if err != nil {

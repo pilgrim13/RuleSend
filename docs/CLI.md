@@ -30,6 +30,48 @@ For a remote Hub use HTTPS. The Hub supports `--tls-cert`, `--tls-key`, and `--p
 
 Draft editing and publishing are separate actions. Restoring a previous release creates a draft; publish it to produce a new immutable version. A local edit to a managed block is a conflict. The Agent does not silently import or discard that edit. Backups and a replacement journal live in its data directory. Existing conversations and application behavior are not automatically verified.
 
+## Optional source ownership
+
+```sh
+rulesend hub serve --data /absolute/private/hub-data \
+  --listen 127.0.0.1:8787 --public-url https://rules.example.com \
+  --source-config /absolute/private/source-config.json
+```
+
+`--source-config` accepts one owner-only regular JSON file, at most 64 KiB. Its
+top-level keys are existing pack IDs; each value has this shape. Replace the
+placeholders with independently verified source metadata before starting:
+
+```json
+{
+  "PACK_ID": {
+    "label": "Reviewed shared rules",
+    "initialProof": {
+      "commit": "<40-character-lowercase-commit>",
+      "releaseId": "rules-v1",
+      "version": "v1",
+      "hash": "<64-character-lowercase-sha256>"
+    }
+  }
+}
+```
+
+The initial hash must match an existing published pack. This config contains no
+Git command, repository path, or publisher token. Keep its original anchor on
+subsequent starts even after completed publications advance the current proof.
+An already enabled owner cannot be omitted or silently changed.
+
+For a source-owned pack, explicit Publish returns a queued request. A separately
+reviewed external publisher records its frozen saved content and submits the
+source proof before a Hub release is created. Newer drafts remain independent.
+The Hub creates a private `source-token` for this dedicated machine role; do not
+reuse administrator or device credentials. RuleSend provides the job API, not a
+general Git worker or remote shell. See [operations](OPERATIONS.md) for failure
+preservation and [the API contract](IMPLEMENTATION_CONTRACT.md) for endpoints.
+
+Ordinary packs are unchanged. No Agent flags or additional local path permissions
+are granted by enabling source ownership.
+
 This alpha has no unbind or remote deletion command. Stop the Agent to stop local processing, pause a pack to stop its application, or revoke a device to reject its future Hub requests. These actions leave installed application files in place. Preserve the Agent data directory and backups when resolving a conflict; deleting state can prevent recognition of an existing managed block. The service does not promise lossless behavior against every unrelated local writer.
 
 ## Preview before applying

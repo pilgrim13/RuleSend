@@ -36,6 +36,64 @@ rules.example.com {
 
 The public URL must exactly match the browser origin, including a non-default port. The UI uses same-origin requests and does not support mounting under a URL subpath. Do not expose the plaintext backend to a network, disable certificate verification, put tokens in URLs, or log request bodies/authorization headers at a proxy. Agents reject redirects and verify HTTPS certificates. A private network/VPN is a sensible additional boundary; its setup is outside this alpha.
 
+## Optional Git-backed publication
+
+The Hub can queue publication for packs whose canonical content is recorded in a
+separately reviewed Git source. Enable this explicitly with `hub serve
+--source-config FILE`; ordinary packs keep their direct publication workflow.
+The file is an owner-only JSON object keyed by existing pack ID, with `label` and
+`initialProof` fields. The proof contains `commit`, `releaseId`, `version`, and
+`hash`. First verify the source independently and publish those exact bytes in
+the Hub: initial source ownership requires a matching published pack. See the
+[command contract](CLI.md) for the file shape.
+
+The browser's Publish confirmation freezes the saved draft and creates a queued
+request. Later edits and restores remain possible, but do not change that
+request. A reviewed external publisher reads the frozen body, records it in its
+fixed source, verifies the committed release, and completes the request with its
+source proof. Only then does the Hub create a version available to Agents under
+the existing delivery policy. A queue notification is not publication or device
+installation. Source rule versions and RuleSend pack versions are separate.
+
+The publisher is an operator-provided integration, not a bundled Git checkout or
+shell runner. Its commands, repository, allowed files, source trust, and transport
+must be reviewed locally; browser requests cannot supply executable commands or
+repository paths. Keep its credentials, deployment mappings, recovery journals,
+and backups outside public source control. The Hub validates the completion's
+proof fields, parent and content hash against the frozen request; it relies on
+the reviewed publisher to establish the actual Git history and manifest.
+
+Enabling source ownership creates `HUB_DATA/source-token`, a separate owner-only
+publisher credential. It can use source job endpoints for configured packs, not
+administrator or Agent endpoints. Do not place it in browser storage, URLs, or
+logs. The worker API accepts its Bearer token without a browser Origin; browser
+sessions, administrator tokens, and device credentials cannot complete jobs.
+The browser receives job metadata, while the dedicated publisher endpoint
+returns the frozen content. Protect the Hub database as well as the token.
+
+Keep the original `initialProof` configuration when restarting: it is the
+persisted ownership anchor, while completed source releases advance the proof
+in the database. Omitting an enabled owner, changing its anchor, or losing or
+replacing the initialized publisher token blocks startup. Include the original
+source configuration and token in protected backups; do not remove them to
+silently return the pack to direct publication.
+
+Only one unresolved request can own a source pack. A retryable failure retains
+its frozen bytes, pending slot, previous published version, and source proof.
+The external publisher can retry that same request; the UI's Check again only
+refreshes observations. A terminal content rejection releases the slot so the
+user can edit, save, and explicitly publish a corrected draft. Repeated matching
+completion requests return the same immutable release, rather than creating
+duplicates. Preserve worker journals when recovering an interrupted request,
+and reconcile its completion before processing a newer source change. Git
+conflicts or ambiguous locks need review; do not reset source history or discard
+state merely to clear a failed status. Advance each device's local ownership
+metadata separately after verifying the new source and its actual receipt.
+
+The source proof, local file read-back receipt, fresh application loading, and
+AI behavior are distinct evidence. A Git commit or a completed publisher request
+does not replace device coverage or an application-loading check.
+
 ## Start automatically
 
 First complete a successful manual enrollment, binding, `agent preview`, and `agent once`. Then install the reviewed executable at a stable path you control. The templates below do not enroll a device or grant a new path. Replace every placeholder and inspect the resulting file before enabling it.

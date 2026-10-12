@@ -4,8 +4,8 @@ Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser, physical-d
 
 | Check | Result and scope |
 | --- | --- |
-| Automated Go tests | Passed on macOS arm64 with Go 1.27.1 and Linux arm64 with Go 1.25.14, including `go test -race -mod=readonly ./...`. |
-| Static Go analysis | `go vet ./...` passed on macOS arm64 and Linux arm64. |
+| Automated Go tests | The current source-queue implementation passed the full `go test -race -mod=readonly ./...` suite on macOS arm64 with Go 1.27.1. Earlier baseline checks also passed on Linux arm64 with Go 1.25.14; the optional source feature has not been revalidated there. |
+| Static Go analysis | `go vet ./...` passed for the current implementation on macOS arm64. The earlier Linux arm64 result precedes the optional source feature. |
 | Publishing/authentication | Tests cover sessions and origins, role separation, draft CAS, immutable releases, restore-to-draft, enrollment race/expiry, scoped reads, revocation, and receipt validation. |
 | Local file safety/recovery | Tests cover outside-block preservation, local drift, malformed markers, result-size limits, private state, locks, symlinks/special files, parent replacement, backups, file modes, and pre/post/ambiguous crash-journal recovery. |
 | Two-Agent delivery | Passed using two local Agents and a loopback Hub with synthetic rule files. Publish, local conflict preservation, pause/manual delivery, restart, and revocation were exercised. These are not two physical computers. |
@@ -15,7 +15,12 @@ Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser, physical-d
 | Build targets | Built macOS arm64/amd64 and Linux arm64/amd64 executables. macOS arm64 and a Linux arm64 virtual environment were exercised; amd64 builds were not runtime-tested. |
 | Linux runtime | Official `golang:1.25-bookworm` image, Go 1.25.14, Linux arm64 under OrbStack (kernel 6.19.13). Full race tests, vet, build, and executable version check passed with an unprivileged user, read-only source, and tmpfs test storage. This is not physical-device or power-loss testing. |
 | UI static checks | JavaScript syntax passed. DOM insertion uses safe text APIs; no external runtime dependencies, browser credential storage, or inline handlers. |
-| Prototype UI regression checks | Thirteen deterministic DOM-model cases passed, including delayed save/restore edit preservation and write exclusion, clean/dirty policy refresh, policy-save baselines, the login landmark, scoped command copying, clipboard fallback, and focus/scroll restoration. These are separate from the Chrome checks below. |
+| Prototype UI regression checks | Eighteen deterministic DOM-model cases passed, including delayed save/restore edit preservation and write exclusion, clean/dirty policy refresh, policy-save baselines, the login landmark, scoped command copying, clipboard fallback, and focus/scroll restoration. Five added cases cover source HTTP 202 acceptance, frozen queue/completion updates with newer edits, failure/rejection ownership, explicit request retry, and unchanged ordinary HTTP 200 publication. These are separate from the Chrome checks below. |
+| Git-backed source API | Synthetic Go cases passed for initial proof/ownership anchoring, separate publisher authentication, frozen draft requests with later saves, queue concurrency, idempotent completion, proof conflicts, retryable failure and terminal rejection, retained jobs/identity on restart, repeated identical publication, and rejection of silently omitted source configuration. These remain separate from the live publisher checks below. |
+| Git-backed browser and delivery | Passed in headful Chrome on the office Mac using a private browser profile, the existing scoped SOCKS transport, and normal HTTPS certificate verification. Login used Secure, HttpOnly, SameSite=Strict session cookies. Draft edit/save/compare/restore and explicit queued publication were exercised. The final changed-source and restored-source browser checks reported no JavaScript errors. Identical content reached both global Codex targets; a harmless trailing-newline change then produced Git content and manifest releases before Hub publication and two applied read-back receipts. Restoring the original approved bytes produced another source release and two further applied receipts. |
+| Private integration fixtures | Seven generic Git-publisher checks, thirteen receipt-observer checks, and nine browser-launcher checks passed in temporary fixtures. These adapters remain deployment-specific and outside the public checkout; they do not establish a bundled general-purpose Git publisher or universal browser/transport support. |
+| Source-queue CLI loading | At both the initial identical-content publication and the final restored release, fresh no-model Codex CLI input on both Macs contained the entire canonical body and discovered both required generic skills. Five installed skill files matched the current source manifest. This input check is separate from the earlier synthetic-marker behavior requests. |
+| Source-queue service restart | Hub and private publisher process IDs changed while their original credential identity, initial source anchor, source checkout, and current proof were preserved. A protected Hub database backup passed SQLite integrity checking. Both physical Macs then reported fresh applied read-back receipts matching the final restored body and current published version. This was a process restart, not an operating-system reboot. |
 | Prototype launcher | The local start script built and served English assets, retained authentication, published a synthetic pack, and preserved its version and administrator identity through restart. No application targets were changed by startup. |
 | Browser visual/interaction checks | Passed in headless Chrome 154.0.8037.99 on macOS arm64 at 1440×1000, 390×844, and 320×844. Login/rejection, draft/save/publish, delayed restore edits, cross-client policy refresh, enrollment/guide/copy, real Agent preview/apply/receipt, pause, local conflict, revocation, modal Escape, and layout bounds were exercised with synthetic local fixtures. No unexpected browser warnings or JavaScript errors. Screenshots were inspected outside the checkout. Browser plugin was unavailable; existing Playwright 1.62.1 and a separate temporary Chrome profile were used. |
 | Browser regression fixes | Reproduced and fixed restoration overwriting concurrent edits and stale policy controls. Added the missing login skip-link target and fixed 320px navigation overflow. |
@@ -28,6 +33,31 @@ Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser, physical-d
 Linux image digest: `sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437`. The disposable container mounted no host credentials and published no ports.
 
 Browser tests used an isolated loopback Hub, private temporary credentials, and disposable rule files. They did not bind real application rule paths or alter existing sync jobs. Some refresh/concurrency checks used controlled timers and delayed network responses. Safari and Firefox were not exercised. The separate physical-device acceptance checks are described below.
+
+The optional source job API was added after the earlier loopback browser and
+disposable physical-device checks. It was then exercised through the retained
+global Codex pilot: a real authenticated browser queued frozen drafts, and a
+separately reviewed private publisher verified and recorded the canonical Git
+source before completing each Hub release. Three successive browser requests
+covered unchanged content, a harmless trailing-newline change, and restoration
+of the original approved body. Each completed release reached both physical
+Codex targets with fresh read-back receipts. Source proof, Hub publication, file
+installation, and application input were checked separately; no new general AI
+behavior claim follows from these publications.
+
+The private integration fixtures do not establish power-loss recovery. An
+ambiguous Git state or stale release lock can still require manual review;
+automatic lock deletion, history reset, or force overwrite is not implied.
+Current Linux execution, other browser engines, operating-system reboot/login
+startup, desktop application loading, and Claude loading remain unverified for
+this source-backed rollout. Earlier Linux/cross-build results do not establish
+execution of the optional feature.
+
+The separate native browser-launcher check was blocked by macOS Accessibility
+and Screen Recording permissions. Its fixture results do not establish that
+the shortcut opened successfully on the actual desktop. This limitation is
+separate from the completed headful browser session and does not imply broader
+network configuration or unrelated system permissions were verified.
 
 Physical-device acceptance used the executable from commit `d21a4ba` on macOS 15.7.2 (24G325) and macOS 26.2 (25C56), both arm64. Both installed Codex CLI 0.159.1 sessions resolved their configured default model to `gpt-6-astra`. Claude Code versions were 2.1.105 and 2.1.140; read-only authentication status confirmed neither was signed in. The synthetic marker appeared only in the published instructions, never in the question. Codex also used ephemeral sessions; no unrelated tools or external MCP servers were started for the application probe.
 

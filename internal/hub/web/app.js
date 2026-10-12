@@ -5,7 +5,7 @@
   const app = document.getElementById('app');
   const dialog = document.getElementById('dialog');
   const notifications = document.getElementById('notifications');
-  const state = {packs: [], devices: [], receipts: [], events: []};
+  const state = {packs: [], devices: [], receipts: [], events: [], publications: []};
   const drafts = new Map();
   const details = new Map();
   const packWrites = new Map();
@@ -85,6 +85,7 @@
     return element;
   }
   function pack(id) { return state.packs.find(p => p.id === id); }
+  function publicationPending(p) { return !!p?.source?.pending; }
   function device(id) { return state.devices.find(d => d.id === id); }
   function fresh(d) { return !connectionError && d && !d.revoked && ageSeconds(d.lastSeen) <= STALE_AFTER; }
   function currentReceipt(r) {
@@ -362,7 +363,7 @@
       const title = keyed(button(p.name, () => navigate('packs', p.id), 'text-button pack-name'), `pack-open:${p.id}`);
       const enrolled = state.devices.filter(d => !d.revoked && (d.packIds || []).includes(p.id)).length;
       const description = p.description || `${enrolled} scoped ${enrolled === 1 ? 'device' : 'devices'} · ${p.mode === 'manual' ? 'Manual delivery' : 'Automatic delivery'}`;
-      append(list, append(node('div', 'pack-row'), node('div', 'pack-file', 'MD'), append(node('div', 'grow'), title, node('div', 'pack-detail', description)), badge(p.paused ? 'Paused' : p.publishedVersion ? `v${p.publishedVersion} published` : 'Draft only', p.paused ? 'warning' : p.publishedVersion ? 'good' : 'neutral')));
+      append(list, append(node('div', 'pack-row'), node('div', 'pack-file', 'MD'), append(node('div', 'grow'), title, node('div', 'pack-detail', description), p.source ? badge('Git-backed source') : null), badge(p.paused ? 'Paused' : p.publishedVersion ? `v${p.publishedVersion} published` : 'Draft only', p.paused ? 'warning' : p.publishedVersion ? 'good' : 'neutral')));
     }); return list;
   }
   function coveragePanel(filterId) {
@@ -407,6 +408,7 @@
     append(editorPanel, append(node('div', 'editor-header'), tabs, version));
     if (packTab === 'write') renderEditor(editorPanel, p); else renderHistory(editorPanel, p);
     main.append(editorPanel);
+    const sourcePanel = node('div', 'list-space'); sourcePanel.id = 'pack-source'; main.append(sourcePanel); updateSourcePanel(p);
     const coverage = node('div', 'list-space'); coverage.id = 'pack-coverage'; coverage.append(coveragePanel(p.id)); main.append(coverage);
     append(layout, main, renderPolicy(p)); content.append(layout); refreshEditorStatus();
   }
@@ -440,7 +442,7 @@
       renderMarkdown(document.getElementById('draft-preview'), d.content);
     }
     const save = document.getElementById('save-draft'); if (save) save.disabled = !!writing || !d.dirty;
-    const publish = document.getElementById('publish-draft'); if (publish) publish.disabled = !!writing || d.dirty;
+    const publish = document.getElementById('publish-draft'); if (publish) publish.disabled = !!writing || d.dirty || publicationPending(p);
     const alert = document.getElementById('draft-alert');
     if (alert) {
       alert.replaceChildren();
@@ -452,8 +454,50 @@
     const observed = document.getElementById('policy-observed');
     if (observed) observed.textContent = p.paused ? 'Delivery is paused. Sync now will not resume it.' : !p.publishedVersion ? 'Publish a version before a device can install this pack.' : p.mode === 'manual' ? 'Devices wait for Sync now or a local Agent once command.' : `Agents check this pack every ${p.intervalSeconds} seconds while connected.`;
     if (activePolicyForm?.id === p.id && activePolicyForm.form.isConnected) activePolicyForm.update(p);
+    updateSourcePanel(p);
     const coverage = document.getElementById('pack-coverage');
     if (coverage && document.activeElement?.id !== 'draft-editor') preserveInteraction(coverage, () => coverage.replaceChildren(coveragePanel(p.id)));
+  }
+  function updateSourcePanel(p) {
+    const holder = document.getElementById('pack-source'); if (!holder) return;
+    holder.className = p.source ? 'list-space' : 'hidden';
+    preserveInteraction(holder, () => { if (p.source) holder.replaceChildren(renderSourcePanel(p)); else holder.replaceChildren(); });
+  }
+  function renderSourcePanel(p) {
+    const source = p.source; const proof = source.proof || {};
+    const check = keyed(button('Check again', async () => {
+      try { await busy(check, async () => refresh()); } catch (err) { showError(err); }
+    }, 'compact'), `source-refresh:${p.id}`);
+    const section = panel('Git-backed source', 'Source recording happens before publication. Device installation is checked separately.', check);
+    const info = node('div', 'panel-body source-proof');
+    if (source.label) info.append(node('p', 'small wrap', source.label));
+    if (proof.commit && proof.releaseId && proof.hash) {
+      append(info, node('p', 'small wrap', `Source ${proof.version || 'version'} · release ${proof.releaseId}`), node('p', 'mono small wrap', `Git commit ${String(proof.commit).slice(0, 12)} · rule hash ${String(proof.hash).slice(0, 12)}`));
+    } else info.append(node('p', 'small', 'No recorded source release yet.'));
+    if (publicationPending(p)) {
+      info.append(note(source.status === 'failed' ? 'Git recording needs attention. This saved request is preserved; device delivery is not confirmed.' : 'Publication queued. Source is being recorded before delivery.', source.status === 'failed' ? 'warning' : ''));
+    } else if (source.error === 'source_content_rejected') {
+      info.append(note('The source checks rejected this draft. Edit and save a corrected draft, then publish again.', 'warning'));
+    }
+    section.append(info);
+    const jobs = state.publications.filter(job => job.packId === p.id).slice().sort((a, b) => (date(b.createdAt)?.getTime() || 0) - (date(a.createdAt)?.getTime() || 0)).slice(0, 5);
+    if (jobs.length) {
+      const list = node('div', 'release-list');
+      jobs.forEach(job => {
+        const labels = {pending: ['Queued for source recording', 'neutral'], failed: ['Source recording needs attention', 'warning'], completed: ['Published in Hub', 'good'], rejected: ['Draft rejected', 'error']};
+        const [label, tone] = labels[job.status] || ['Publication not confirmed', 'warning'];
+        const descriptions = {
+          pending: 'This saved request is waiting for Git recording. It has not been published for device delivery.',
+          failed: 'Source recording has not completed. This saved request remains available for retry.',
+          completed: `Hub version ${job.releaseVersion || 'recorded'} was published after Git recording. Check device coverage for installation.`,
+          rejected: 'Source checks rejected this request. A corrected saved draft can be published as a new request.'
+        };
+        const detail = append(node('div', 'grow'), badge(label, tone), node('p', '', descriptions[job.status] || 'Check again for the current result before retrying.'), seen(job.completedAt || job.createdAt));
+        if (job.hash) detail.append(node('div', 'hash mono', `Requested rule hash ${String(job.hash).slice(0, 12)}`));
+        list.append(append(node('div', 'release'), node('span', 'release-circle', job.status === 'completed' ? '✓' : '↗'), detail));
+      }); section.append(list);
+    }
+    return section;
   }
   async function saveDraft(id, element) {
     const d = drafts.get(id);
@@ -577,22 +621,38 @@
     }); name.focus();
   }
   function showPublish(id) {
-    const p = pack(id); const d = drafts.get(id); if (!p || !d || d.dirty || packWrites.has(id)) return;
+    const p = pack(id); const d = drafts.get(id); if (!p || !d || d.dirty || packWrites.has(id) || publicationPending(p)) return;
     const baseRevision = d.baseRevision;
     const {body, footer} = openDialog(`Publish version ${p.publishedVersion + 1}?`);
     const scoped = state.devices.filter(item => !item.revoked && (item.packIds || []).includes(id));
-    append(body, node('p', '', 'This creates an immutable version of your saved draft. Delivery follows this pack’s current policy.'), node('div', 'selected-scope', `${p.name} · ${scoped.length} scoped ${scoped.length === 1 ? 'device' : 'devices'} · ${p.paused ? 'Paused' : p.mode === 'manual' ? 'Manual delivery' : 'Automatic delivery'}`));
+    append(body, node('p', '', p.source ? 'This queues your saved draft for Git recording, then creates an immutable Hub version. Delivery follows this pack’s current policy after publication.' : 'This creates an immutable version of your saved draft. Delivery follows this pack’s current policy.'), node('div', 'selected-scope', `${p.name} · ${scoped.length} scoped ${scoped.length === 1 ? 'device' : 'devices'} · ${p.paused ? 'Paused' : p.mode === 'manual' ? 'Manual delivery' : 'Automatic delivery'}`));
+    if (p.source) body.append(note('Only this saved draft is submitted. You can keep editing while source recording is queued; later edits require their own save and publication.'));
     const message = input(); message.maxLength = 500; message.placeholder = 'What changed in this version?';
     body.append(field('Release note (optional)', message));
     if (!scoped.length) body.append(note('No devices are scoped yet. You can publish now and enroll a device later.'));
     if (p.paused || p.mode === 'manual') body.append(note(p.paused ? 'Delivery is paused. Publishing will not resume it.' : 'Manual delivery is enabled. Request Sync now when you want devices to apply this version.', 'warning'));
     const error = node('p', 'error-inline'); error.setAttribute('role', 'alert'); body.append(error);
     const confirm = button('Publish version', async () => {
-      if (packWrites.has(id) || drafts.get(id)?.dirty) return;
+      if (packWrites.has(id) || drafts.get(id)?.dirty || publicationPending(pack(id))) return;
       packWrites.set(id, 'publishing');
       refreshEditorStatus();
       try { await busy(confirm, async () => {
-        try { const release = await api(`/api/packs/${encodeURIComponent(id)}/publish`, 'POST', {baseRevision, message: message.value.trim()}); details.delete(id); closeDialog(); await refresh(); renderView(); toast(`Version ${release.version} published. Installation is tracked separately.`); }
+        try {
+          const result = await api(`/api/packs/${encodeURIComponent(id)}/publish`, 'POST', {baseRevision, message: message.value.trim()});
+          details.delete(id);
+          if (p.source && (!result.publication || result.publication.packId !== id || !result.publication.id)) {
+            await refresh();
+            throw new Error('The Hub did not confirm this publication request. Check the current status before retrying.');
+          }
+          if (result.publication) {
+            const job = result.publication;
+            state.publications = [job, ...state.publications.filter(item => item.id !== job.id)];
+            const current = pack(id); if (current?.source) current.source = {...current.source, pending: job.id, status: job.status, error: job.error || ''};
+          }
+          if (body.isConnected) closeDialog();
+          await refresh(); refreshEditorStatus();
+          toast(result.publication ? 'Publication queued. Source is being recorded before delivery.' : `Version ${result.version} published. Installation is tracked separately.`);
+        }
         catch (err) {
           if (err.status === 409) { drafts.get(id).dirty = true; await refresh(); }
           showError(err, error);

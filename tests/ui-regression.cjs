@@ -7,6 +7,7 @@ async function runRuleSendChecks(source) {
   function makeEnvironment() {
     const doc = {activeElement: null};
     const clipboard = {writes: [], fail: false, async writeText(text) { if (this.fail) throw new Error('Clipboard denied'); this.writes.push(text); }};
+    let respond = async () => { throw new Error('Unexpected fetch'); };
     class Element {
       constructor(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.dataset = {}; this.attributes = {}; this.handlers = {}; this.disabled = false; this.scrollLeft = 0; this.open = false; this._text = ''; this.className = ''; this.value = ''; this.parent = null; this.classList = {toggle() {}, remove() {}, add() {}}; }
       append(...items) { for (const item of items) { if (typeof item === 'string') { const text = new Element('#text'); text._text = item; text.parent = this; this.children.push(text); } else { item.parent = this; this.children.push(item); } } }
@@ -41,19 +42,19 @@ async function runRuleSendChecks(source) {
     const marker = "  window.addEventListener('beforeunload'";
     assert(source.includes(marker), 'Cannot locate app startup boundary');
     const instrumented = source.slice(0, source.indexOf(marker)).replace('(() => {', 'return (() => {') + `
-      return {state, drafts, packWrites, saveDraft, showPublish, showRestore, closeDialog, renderEditor, renderPolicy, renderLogin, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction,
+      return {state, drafts, packWrites, saveDraft, showPublish, showRestore, closeDialog, renderEditor, renderPolicy, renderSourcePanel, renderLogin, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction,
         context(nextView, id) { view = nextView; selectedPack = id; },
         hooks(values) {
           if (values.api) api = values.api;
           if (values.refresh) refresh = values.refresh;
           if (values.render) { renderShell = values.render; renderView = values.render; renderConnection = values.render; }
-          toast = () => {}; showError = error => { throw error; };
+          toast = values.toast || (() => {}); showError = values.showError || (error => { throw error; });
         }
       };
     })();`;
-    const app = new Function('document', 'window', 'location', 'navigator', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'TextEncoder', instrumented)(doc, {}, {origin: 'http://127.0.0.1:8787', hostname: '127.0.0.1'}, {clipboard}, () => 0, () => {}, () => 0, () => {}, class { encode(text) { return {length: text.length}; } });
+    const app = new Function('document', 'window', 'location', 'navigator', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'TextEncoder', 'fetch', instrumented)(doc, {}, {origin: 'http://127.0.0.1:8787', hostname: '127.0.0.1'}, {clipboard}, () => 0, () => {}, () => 0, () => {}, class { encode(text) { return {length: text.length}; } }, (...args) => respond(...args));
     function descendants(el) { return [el, ...el.children.flatMap(descendants)]; }
-    return {app, doc, dialog, Element, mount, descendants, clipboard};
+    return {app, doc, dialog, Element, mount, descendants, clipboard, respond(fn) { respond = fn; }};
   }
   function setupPack(env, id = 'pack-a') {
     const p = {id, name: id, content: 'A', draftRevision: 1, publishedVersion: 0, mode: 'manual', intervalSeconds: 60, paused: false};
@@ -62,6 +63,17 @@ async function runRuleSendChecks(source) {
     env.app.context('packs', id); return p;
   }
   function deferred() { let resolve; const promise = new Promise(r => resolve = r); return {promise, resolve}; }
+  function sourcePack(env) {
+    const p = setupPack(env);
+    p.source = {label: 'Shared rule source', proof: {commit: 'a'.repeat(40), releaseId: 'common-v6-fixture', version: 'v6', hash: 'b'.repeat(64)}, pending: '', status: 'idle', error: ''};
+    const draft = env.app.drafts.get(p.id); draft.content = 'A'; draft.dirty = false;
+    env.app.renderEditor(env.doc.getElementById('content'), p); env.mount('pack-source'); env.app.refreshEditorStatus();
+    return p;
+  }
+  function sourceJob(p, status = 'pending') {
+    return {id: 'publication-fixture', packId: p.id, content: 'A', hash: 'c'.repeat(64), message: '', baseDraftRevision: 1, baseSourceProof: p.source.proof, basePublishedVersion: 0, basePublishedHash: '', status, error: '', createdAt: '2026-10-12T00:00:00Z', completedAt: '', releaseVersion: 0};
+  }
+  function response(status, value) { return {ok: status >= 200 && status < 300, status, async json() { return value; }}; }
 
   {
     const e = makeEnvironment(); const p = setupPack(e); const wait = deferred(); let puts = 0;
@@ -104,6 +116,83 @@ async function runRuleSendChecks(source) {
     wait.resolve({version: 1}); await pending;
     assert(!e.app.packWrites.has(p.id), 'Publish lock must clear');
     results.push('PASS: publication also blocks competing saves');
+  }
+  {
+    const e = makeEnvironment(); const p = sourcePack(e); const job = sourceJob(p); const wait = deferred(); const messages = []; let submitted;
+    e.respond(async (path, options) => {
+      assert(path.endsWith('/publish') && options.method === 'POST', 'Source publication must use the existing explicit publish endpoint');
+      submitted = JSON.parse(options.body); return wait.promise;
+    });
+    e.app.hooks({refresh: async () => {}, toast: message => messages.push(message)});
+    e.app.showPublish(p.id);
+    assert(e.dialog.textContent.includes('Git recording') && e.dialog.textContent.includes('Only this saved draft is submitted.'), 'Source publication confirmation must explain source recording and frozen saved content');
+    const confirm = e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === 'Publish version');
+    const pending = confirm.trigger('click'); e.app.closeDialog();
+    const editor = e.doc.getElementById('draft-editor'); editor.focus(); editor.value = 'Later local edit'; await editor.trigger('input');
+    wait.resolve(response(202, {publication: job})); await pending;
+    const draft = e.app.drafts.get(p.id);
+    assert(submitted.baseRevision === 1 && draft.content === 'Later local edit' && draft.dirty, 'HTTP 202 publication must keep later local edits against the saved revision');
+    assert(editor.isConnected && e.doc.activeElement === editor && editor.value === 'Later local edit', 'Queue acceptance cannot replace or refocus an active editor');
+    assert(p.publishedVersion === 0 && p.source.pending === job.id && e.app.state.publications[0].id === job.id, 'HTTP 202 queues a job without claiming a published version');
+    assert(!e.doc.getElementById('save-draft').disabled && e.doc.getElementById('publish-draft').disabled, 'An accepted queue must permit saving later edits while blocking another publication');
+    assert(messages.length === 1 && messages[0] === 'Publication queued. Source is being recorded before delivery.', 'Queued publication must never report Version undefined or device installation');
+    results.push('PASS: HTTP 202 queues source recording while preserving newer draft text and editor focus');
+  }
+  {
+    const e = makeEnvironment(); const p = sourcePack(e); const job = sourceJob(p); let remote = {...p, source: {...p.source, pending: job.id, status: 'pending'}};
+    e.app.hooks({api: async () => ({packs: [remote], devices: [], receipts: [], events: [], publications: [job]}), render: () => {}});
+    await e.app.loadSnapshot();
+    assert(e.doc.getElementById('publish-draft').disabled, 'A queued source publication observed on another client must block a duplicate publish');
+    e.app.showPublish(p.id); assert(!e.dialog.open, 'Pending source ownership must also guard direct publish invocation');
+    e.app.showRestore(p.id, {version: 1}); assert(e.dialog.open, 'A queued source publication must not block restoring a newer draft'); e.app.closeDialog();
+    const editor = e.doc.getElementById('draft-editor'); editor.focus(); editor.value = 'Unsaved next version'; await editor.trigger('input');
+    job.status = 'completed'; job.releaseVersion = 2; job.completedAt = '2026-10-12T00:00:30Z';
+    remote = {...remote, publishedVersion: 2, publishedHash: job.hash, source: {...remote.source, pending: '', status: 'idle', proof: {...remote.source.proof, commit: 'd'.repeat(40), hash: job.hash}}};
+    await e.app.loadSnapshot();
+    const text = e.doc.getElementById('pack-source').textContent;
+    assert(e.app.drafts.get(p.id).content === 'Unsaved next version' && e.doc.activeElement === editor && editor.isConnected, 'Worker completion polling must preserve next-version edits and focus');
+    assert(text.includes('Published in Hub') && text.includes('Hub version 2') && text.includes('Check device coverage for installation.'), 'Worker completion must distinguish Hub publication from device installation');
+    assert(text.includes('Source v6') && text.includes('Git commit dddddddddddd'), 'The source version and updated Git proof must be distinct from the Hub pack version');
+    assert(!e.doc.getElementById('save-draft').disabled, 'The newer local draft remains saveable after source publication completes');
+    results.push('PASS: queued and completed source snapshots update proof without replacing newer edits or claiming installation');
+  }
+  {
+    const e = makeEnvironment(); const p = sourcePack(e); const job = sourceJob(p, 'failed'); job.error = '/private/internal-worker-detail';
+    let remote = {...p, source: {...p.source, pending: job.id, status: 'failed', error: 'source_publish_failed'}};
+    e.app.hooks({api: async () => ({packs: [remote], devices: [], receipts: [], events: [], publications: [job]}), render: () => {}});
+    await e.app.loadSnapshot();
+    const failed = e.doc.getElementById('pack-source').textContent;
+    assert(failed.includes('This saved request remains available for retry.') && !failed.includes(job.error), 'Failed source jobs must preserve the frozen request with generic errors without promising an external worker retry');
+    assert(e.doc.getElementById('publish-draft').disabled, 'A retryable failed job still owns its pending publication slot');
+    job.status = 'rejected'; job.error = 'source_content_rejected';
+    remote = {...remote, source: {...remote.source, pending: '', error: 'source_content_rejected'}}; await e.app.loadSnapshot();
+    assert(!e.doc.getElementById('publish-draft').disabled && e.doc.getElementById('pack-source').textContent.includes('Edit and save a corrected draft'), 'Terminal source rejection must release publish ownership and explain how to correct the draft');
+    e.app.showPublish(p.id); assert(e.dialog.open, 'A source rejection must permit a later explicit publication');
+    results.push('PASS: failed source jobs retain their retry slot, while rejected jobs allow a corrected publication');
+  }
+  {
+    const e = makeEnvironment(); const p = sourcePack(e); let attempts = 0; const messages = [];
+    e.respond(async () => {
+      attempts += 1;
+      return attempts === 1 ? response(503, {error: 'Publication could not be queued. Try again after checking status.'}) : response(202, {publication: sourceJob(p)});
+    });
+    e.app.hooks({refresh: async () => {}, toast: message => messages.push(message), showError: (error, target) => { target.textContent = error.message; }});
+    e.app.showPublish(p.id);
+    const confirm = e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === 'Publish version');
+    await confirm.trigger('click');
+    assert(e.dialog.open && !confirm.disabled && !e.app.packWrites.has(p.id), 'An unaccepted request failure must keep its confirmation available for an explicit retry');
+    assert(e.dialog.textContent.includes('Publication could not be queued.') && !messages.length, 'A failed request must show its error without a success notification');
+    await confirm.trigger('click');
+    assert(attempts === 2 && !e.dialog.open && messages[0]?.startsWith('Publication queued.'), 'Only another explicit click may retry and report an accepted queue');
+    results.push('PASS: an unaccepted source request stays reviewable and can be retried explicitly');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const draft = e.app.drafts.get(p.id); draft.content = 'A'; draft.dirty = false; const messages = [];
+    e.respond(async () => response(200, {version: 1}));
+    e.app.hooks({refresh: async () => {}, toast: message => messages.push(message)});
+    e.app.showPublish(p.id); await e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === 'Publish version').trigger('click');
+    assert(messages[0] === 'Version 1 published. Installation is tracked separately.' && !e.app.state.publications.length, 'Ordinary packs must retain their direct immutable publication flow');
+    results.push('PASS: ordinary HTTP 200 publication retains its existing behavior');
   }
   for (const finalText of ['C', 'A']) {
     const e = makeEnvironment(); const p = setupPack(e); const wait = deferred(); let mutations = 0;

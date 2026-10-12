@@ -27,7 +27,7 @@ const usage = `RuleSend · Your AI rules. Every device.
   rulesend version
   rulesend hub init  --data DIR
   rulesend hub serve --data DIR [--listen 127.0.0.1:8787] [--public-url https://...]
-                     [--tls-cert FILE --tls-key FILE]
+                     [--tls-cert FILE --tls-key FILE] [--source-config FILE]
   rulesend agent enroll --data DIR --hub URL --name NAME --token-file FILE|-
   rulesend agent bind   --data DIR --pack ID --adapter codex|claude|markdown
                        (--path /absolute/file.md | --default) [--label NAME]
@@ -98,6 +98,7 @@ func run(args []string) error {
 		public := f.String("public-url", "", "exact public HTTPS origin")
 		cert := f.String("tls-cert", "", "TLS certificate file")
 		key := f.String("tls-key", "", "TLS private key file")
+		sourceConfig := f.String("source-config", "", "private Git-backed publication configuration")
 		if err := parse(f, data, args[2:]); err != nil {
 			return err
 		}
@@ -109,7 +110,14 @@ func run(args []string) error {
 			return err
 		}
 		defer store.Close()
-		handler, err := hub.NewServer(store, *public)
+		var sources map[string]hub.SourceConfig
+		if *sourceConfig != "" {
+			sources, err = readSourceConfig(*sourceConfig)
+			if err != nil {
+				return err
+			}
+		}
+		handler, err := hub.NewServerWithSources(store, *public, sources)
 		if err != nil {
 			return err
 		}
@@ -284,6 +292,34 @@ func readToken(path string) (string, error) {
 		return "", errors.New("cannot read token within size limit")
 	}
 	return strings.TrimSpace(string(b)), nil
+}
+
+func readSourceConfig(path string) (map[string]hub.SourceConfig, error) {
+	st, err := os.Lstat(path)
+	if err != nil || !st.Mode().IsRegular() || st.Mode().Perm()&0077 != 0 || st.Size() > 64*1024 {
+		return nil, errors.New("source configuration must be an owner-only regular file within 64 KiB")
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, errors.New("cannot read source configuration")
+	}
+	defer f.Close()
+	dec := json.NewDecoder(io.LimitReader(f, 64*1024+1))
+	dec.DisallowUnknownFields()
+	var sources map[string]hub.SourceConfig
+	if err = dec.Decode(&sources); err != nil || len(sources) == 0 || len(sources) > 100 {
+		return nil, errors.New("invalid source configuration")
+	}
+	var trailing any
+	if dec.Decode(&trailing) != io.EOF {
+		return nil, errors.New("source configuration must contain one JSON object")
+	}
+	for id := range sources {
+		if !core.ValidID(id) {
+			return nil, errors.New("invalid source pack identifier")
+		}
+	}
+	return sources, nil
 }
 
 func validateListen(addr, public, cert, key string) error {

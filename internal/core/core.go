@@ -40,26 +40,61 @@ func ValidateContent(s string) error {
 }
 
 type Pack struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	Description      string `json:"description"`
-	Content          string `json:"content"`
-	DraftRevision    int64  `json:"draftRevision"`
-	PublishedVersion int64  `json:"publishedVersion"`
-	PublishedHash    string `json:"publishedHash"`
-	Mode             string `json:"mode"`
-	IntervalSeconds  int    `json:"intervalSeconds"`
-	Paused           bool   `json:"paused"`
-	Trigger          int64  `json:"trigger"`
-	UpdatedAt        string `json:"updatedAt"`
+	ID               string      `json:"id"`
+	Name             string      `json:"name"`
+	Description      string      `json:"description"`
+	Content          string      `json:"content"`
+	DraftRevision    int64       `json:"draftRevision"`
+	PublishedVersion int64       `json:"publishedVersion"`
+	PublishedHash    string      `json:"publishedHash"`
+	Mode             string      `json:"mode"`
+	IntervalSeconds  int         `json:"intervalSeconds"`
+	Paused           bool        `json:"paused"`
+	Trigger          int64       `json:"trigger"`
+	UpdatedAt        string      `json:"updatedAt"`
+	Source           *PackSource `json:"source,omitempty"`
+}
+
+// SourceProof identifies a reviewed external content release, independently of
+// the monotonically increasing RuleSend pack version.
+type SourceProof struct {
+	Commit    string `json:"commit"`
+	ReleaseID string `json:"releaseId"`
+	Version   string `json:"version"`
+	Hash      string `json:"hash"`
+}
+type PackSource struct {
+	Label   string      `json:"label"`
+	Proof   SourceProof `json:"proof"`
+	Pending string      `json:"pending"`
+	Status  string      `json:"status"`
+	Error   string      `json:"error"`
+}
+type SourcePublication struct {
+	ID                   string       `json:"id"`
+	PackID               string       `json:"packId"`
+	Content              string       `json:"content,omitempty"`
+	Hash                 string       `json:"hash"`
+	Message              string       `json:"message"`
+	BaseDraftRevision    int64        `json:"baseDraftRevision"`
+	BaseSourceProof      SourceProof  `json:"baseSourceProof"`
+	BasePublishedVersion int64        `json:"basePublishedVersion"`
+	BasePublishedHash    string       `json:"basePublishedHash"`
+	Status               string       `json:"status"`
+	Error                string       `json:"error"`
+	CreatedAt            string       `json:"createdAt"`
+	CompletedAt          string       `json:"completedAt,omitempty"`
+	ReleaseVersion       int64        `json:"releaseVersion,omitempty"`
+	Proof                *SourceProof `json:"proof,omitempty"`
 }
 type Release struct {
-	PackID    string `json:"packId"`
-	Version   int64  `json:"version"`
-	Content   string `json:"content"`
-	Hash      string `json:"hash"`
-	Message   string `json:"message"`
-	CreatedAt string `json:"createdAt"`
+	PackID    string       `json:"packId"`
+	Version   int64        `json:"version"`
+	Content   string       `json:"content"`
+	Hash      string       `json:"hash"`
+	Message   string       `json:"message"`
+	CreatedAt string       `json:"createdAt"`
+	Source    *SourceProof `json:"source,omitempty"`
 }
 type Device struct {
 	ID       string   `json:"id"`
@@ -91,10 +126,11 @@ type Event struct {
 	CreatedAt string `json:"createdAt"`
 }
 type Snapshot struct {
-	Packs    []Pack    `json:"packs"`
-	Devices  []Device  `json:"devices"`
-	Receipts []Receipt `json:"receipts"`
-	Events   []Event   `json:"events"`
+	Packs        []Pack              `json:"packs"`
+	Devices      []Device            `json:"devices"`
+	Receipts     []Receipt           `json:"receipts"`
+	Events       []Event             `json:"events"`
+	Publications []SourcePublication `json:"publications"`
 }
 type Plan struct {
 	Pack    Pack     `json:"pack"`
