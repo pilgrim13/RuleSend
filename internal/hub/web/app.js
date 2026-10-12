@@ -205,10 +205,18 @@
     append(form, node('div', 'eyebrow', 'Welcome to your Hub'), node('h2', '', 'Make yourself at home.'), node('p', '', 'Sign in with the administrator token created when you initialized this Hub.'), field('Administrator token', token, 'Paste the contents of your Hub’s admin-token file.'), error, submit, node('p', 'login-note', 'Your token is exchanged for a private session cookie. It is never saved in browser storage. Keep the token file private.'));
     form.addEventListener('submit', async event => {
       event.preventDefault(); error.textContent = '';
-      const secret = token.value; token.value = '';
+      const secret = token.value.trim();
+      if (!/^[a-f0-9]{64}$/.test(secret)) {
+        error.textContent = 'Paste the 64-character administrator token, not the command or terminal output.';
+        token.focus(); return;
+      }
+      token.value = '';
       await busy(submit, async () => {
         try { await api('/api/login', 'POST', {token: secret}); authenticated = true; await refresh(true); }
-        catch (err) { error.textContent = err.message; token.focus(); }
+        catch (err) {
+          error.textContent = err.status === 401 ? 'That administrator token was not accepted. Copy it again from this Hub’s admin-token file.' : err.message;
+          token.focus();
+        }
       });
     });
     append(screen, story, append(node('div', 'login-form-wrap'), form)); app.replaceChildren(screen);
@@ -264,6 +272,7 @@
   }
   async function loadSnapshot(initial = false) {
     const generation = authGeneration;
+    const loginAccepted = initial && authenticated;
     try {
       const result = await api('/api/state');
       if (generation !== authGeneration) return;
@@ -284,7 +293,7 @@
       if (error.status === 401) {
         authenticated = false;
         closeDialog();
-        renderLogin(initial ? '' : 'Your session has expired. Sign in to continue.');
+        renderLogin(loginAccepted ? 'Your token was accepted, but the browser session could not be opened. Allow cookies for this Hub and try again.' : initial ? '' : 'Your session has expired. Sign in to continue.');
       } else if (initial) {
         authenticated = false; renderLogin(error.message);
       } else {

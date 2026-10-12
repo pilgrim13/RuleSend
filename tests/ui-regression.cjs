@@ -282,6 +282,52 @@ async function runRuleSendChecks(source) {
     results.push('PASS: policy save protects later edits, blocks duplicate submissions, and resets the saved baseline');
   }
   {
+    const e = makeEnvironment(); let requests = 0;
+    e.respond(async () => { requests += 1; throw new Error('Invalid input must not reach the Hub'); });
+    e.app.renderLogin();
+    const form = e.descendants(e.doc.body).find(el => el.tagName === 'FORM');
+    const token = e.descendants(form).find(el => el.tagName === 'INPUT');
+    token.value = 'ssh example cat admin-token | pbcopy';
+    await form.trigger('submit');
+    const error = e.descendants(form).find(el => el.className === 'login-error');
+    assert(requests === 0 && error.attributes.role === 'alert' && error.textContent.includes('64-character administrator token'), 'Pasted commands must explain the required credential without sending a login request');
+    assert(e.doc.activeElement === token && token.value.includes('ssh'), 'Invalid pasted input must remain available to replace in the focused field');
+    results.push('PASS: pasted terminal commands are rejected locally with a visible credential hint');
+  }
+  {
+    const e = makeEnvironment(); let sent;
+    e.respond(async (path, options) => {
+      assert(path === '/api/login', 'Rejected credentials must not request authenticated state');
+      sent = JSON.parse(options.body).token;
+      return response(401, {error: 'authentication required'});
+    });
+    e.app.renderLogin();
+    const form = e.descendants(e.doc.body).find(el => el.tagName === 'FORM');
+    const token = e.descendants(form).find(el => el.tagName === 'INPUT');
+    const submit = e.descendants(form).find(el => el.tagName === 'BUTTON');
+    token.value = '  ' + 'a'.repeat(64) + '\n';
+    await form.trigger('submit');
+    const error = e.descendants(form).find(el => el.className === 'login-error');
+    assert(sent === 'a'.repeat(64) && error.textContent.includes('token was not accepted'), 'A server rejection must explain the credential mismatch after removing incidental surrounding whitespace');
+    assert(!error.textContent.includes(sent) && token.value === '' && e.doc.activeElement === token && !submit.disabled, 'Rejected credentials must be cleared, remain secret, and permit another attempt');
+    results.push('PASS: rejected administrator tokens show a useful error and permit a safe retry');
+  }
+  {
+    const e = makeEnvironment(); const paths = [];
+    e.respond(async path => {
+      paths.push(path);
+      return path === '/api/login' ? response(200, {ok: true}) : response(401, {error: 'authentication required'});
+    });
+    e.app.renderLogin();
+    const form = e.descendants(e.doc.body).find(el => el.tagName === 'FORM');
+    e.descendants(form).find(el => el.tagName === 'INPUT').value = 'a'.repeat(64);
+    await form.trigger('submit');
+    const error = e.descendants(e.doc.body).find(el => el.className === 'login-error');
+    assert(paths.join(',') === '/api/login,/api/state' && !form.isConnected, 'An accepted login must verify its session before opening the workspace');
+    assert(error?.attributes.role === 'alert' && error.textContent.includes('token was accepted') && error.textContent.includes('Allow cookies'), 'A rejected browser session must explain the failure rather than silently resetting login');
+    results.push('PASS: accepted credentials with an unavailable browser session show a visible recovery hint');
+  }
+  {
     const e = makeEnvironment(); e.app.renderLogin();
     const main = e.doc.getElementById('main');
     assert(main?.tagName === 'MAIN' && main.tabIndex === -1 && main.isConnected, 'The login screen must provide the focusable main landmark targeted by the persistent skip link');
