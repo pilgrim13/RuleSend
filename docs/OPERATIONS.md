@@ -126,6 +126,32 @@ restore a whole permission set. Review a narrowly scoped permission removal
 instead of restoring an obsolete snapshot. Windows migration remains outside
 this prototype because its Agent runtime is unsupported.
 
+## Verify application loading separately
+
+An installed file and a successful receipt do not prove that an AI application
+loaded those instructions. First test a disposable project on each device, using
+`AGENTS.md` for Codex and `CLAUDE.md` for Claude Code. Publish a harmless unique
+marker in the rule pack and verify that both local files contain it. Open a fresh
+session in that project and ask for the marker without including its value in the
+question. Disable unrelated tools and integrations for the probe so a file read
+cannot substitute for instruction discovery. Codex CLI's `debug prompt-input`
+can additionally inspect the fresh model input without a model request; that
+output may contain private instructions, so inspect it locally rather than
+uploading it.
+
+Claude Code needs its own working authentication. When existing Claude hooks
+apply or publish dotfiles, disable them for this isolated probe with the
+per-invocation setting `--settings '{"disableAllHooks":true}'`; preserve the
+stored settings. Do not use `--bare`, which skips normal instruction discovery.
+Check the actual resolved model and keep session persistence disabled for a
+synthetic probe where supported. CLI verification covers fresh CLI sessions;
+desktop applications and existing conversations need their own check.
+
+For restart testing, confirm a new service PID, unchanged installed content, and
+delivery of a subsequent published version. A service restart is not evidence
+of operating-system reboot or login startup. Remove only disposable test
+services and network handlers, retaining their private recovery data as needed.
+
 ## Backup
 
 Stop the Hub cleanly and copy its entire private data directory to protected backup storage. The alpha uses SQLite's rollback journal; copying a live database without a consistent snapshot is not a supported backup procedure. Include the original `admin-token`: restarting an initialized Hub with that token missing or mismatched deliberately fails instead of replacing its identity.

@@ -45,7 +45,7 @@ Browser → Hub: draft → publish → immutable release
 - The Agent owns local path approval, scheduling state, backups, and interrupted-write recovery. The Hub cannot grant a new path or run a shell command.
 - Remote traffic requires verified HTTPS. Plain HTTP is limited to loopback; the Hub operator can read rule content.
 - Before replacement, preserve the old file and a recovery journal; verify the resulting file before reporting installation.
-- Publishing, file installation, application loading, and AI behavior are distinct states. Application loading and behavior remain **unverified** in Prototype 1.
+- Publishing, file installation, application loading, and AI behavior are distinct states. Receipts describe file observations; application checks are recorded separately. Fresh Codex CLI loading was exercised in the validation record, while Claude Code loading, desktop applications, and existing conversations remain unverified.
 - Hub availability and consistent backups are the operator's responsibility. Existing local files remain when the Hub is unavailable.
 
 ## Acceptance criteria
@@ -70,8 +70,10 @@ Independent local editors can race filesystem operations. Backups and checks red
 
 The current validation record reports passing Go tests, race checks, static analysis, an executable smoke test, and two local Agents on macOS arm64. Linux arm64 race tests, vet, build, and executable startup also passed in an unprivileged OrbStack container using Go 1.25.14. The record includes macOS/Linux cross-builds. A real Chrome browser workflow was exercised with synthetic local fixtures on desktop and 390/320px screens, including authoring, enrollment, actual local Agent delivery, and conflict/revocation states. These results do not establish runtime behavior on every build target.
 
-Other browser engines, separate physical devices with HTTPS, and installed service/reboot behavior remain unverified in that record. Public CI/release execution must be checked independently; included workflows alone are not evidence of success. App loading and AI behavior remain outside automated verification.
+Two physical Macs also completed certificate-verified HTTPS delivery, pause, Agent stop/reconnect, conflict, revocation, and installed Hub/Agent process restarts. Fresh Codex CLI sessions loaded and followed a synthetic file-only marker on both devices. Claude Code application checks were blocked by missing authentication. These checks used disposable project files; existing global rules and sync settings were preserved.
+
+Other browser engines, Linux service installation, whole-machine reboot/login startup, desktop applications, and existing conversations remain unverified. Public CI/release execution must be checked independently; included workflows alone are not evidence of success. File receipts do not automatically attest application loading or behavior.
 
 ## Next step
 
-Run the acceptance scenario on two physical devices over HTTPS, include an installed Linux Agent, verify service startup/restart, and update the validation record with exact environments and outcomes. Confirm each AI application loads the approved rule file in a fresh session. Follow the operations migration guidance before taking ownership from another rules manager. Expand scope only after this delivery loop is demonstrated.
+Authenticate Claude Code on the test hosts and finish its fresh-session loading check. Verify the intended desktop applications separately, and schedule whole-machine reboot/login startup testing when interruption is acceptable. Exercise an installed Linux Agent/service before claiming that deployment path. Follow the operations migration guidance before taking ownership of real global rules from another manager; the physical-device checks have not performed that migration.
