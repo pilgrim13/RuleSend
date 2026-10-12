@@ -97,6 +97,35 @@ launchctl print "gui/$(id -u)/io.rulesend.agent"
 
 Stop/unload with `launchctl bootout "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.rulesend.agent.plist"`. Remove the plist yourself if you no longer want it loaded on login. These service templates are examples, not an automatically installed service or a claim that service-manager behavior was tested on every system.
 
+## Moving from another rules manager
+
+Give each destination file one automatic writer. Before binding a real AI rules
+file, inventory existing scheduled sync jobs, Git or dotfiles import/apply hooks,
+manual installers, and monitoring jobs that touch that path. Test RuleSend first
+on disposable files; keep the existing setup working until the migration window.
+
+During migration, stop the old writer and exclude the destination from automatic
+dotfiles import and application before enabling the Agent. Preserve the whole
+file, old manager state, and backups. RuleSend preserves other tools' managed
+blocks and ordinary text; it does not automatically adopt or remove them. Review
+any old shared-rule block against the new published pack and remove only the
+retired content locally, keeping unrelated and project-specific instructions.
+Do not append duplicate shared instructions and assume the old manager was replaced.
+
+Bind, preview, apply once, and verify the local bytes and the Hub receipt. Check
+the application's loading in a new session separately. Confirm automatic
+delivery and a restart before retiring the old sync job or installation entry
+point. Retain recovery state and the original version history. A broader
+dotfiles or health-monitoring job may still be needed: remove only its rules
+ownership or rules-observation branch, preserving unrelated configuration and
+connectivity checks.
+
+Remote readers may also have file-specific permissions. Inventory those before
+the target changes; legacy rollback scripts can depend on an old file hash or
+restore a whole permission set. Review a narrowly scoped permission removal
+instead of restoring an obsolete snapshot. Windows migration remains outside
+this prototype because its Agent runtime is unsupported.
+
 ## Backup
 
 Stop the Hub cleanly and copy its entire private data directory to protected backup storage. The alpha uses SQLite's rollback journal; copying a live database without a consistent snapshot is not a supported backup procedure. Include the original `admin-token`: restarting an initialized Hub with that token missing or mismatched deliberately fails instead of replacing its identity.

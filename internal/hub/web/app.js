@@ -18,6 +18,7 @@
   let lastRefreshed = null;
   let connectionError = false;
   let activeTimer;
+  let activePolicyForm = null;
   const STALE_AFTER = 60;
 
   function node(tag, classes, text) {
@@ -186,7 +187,7 @@
   function renderLogin(message = '') {
     authGeneration += 1;
     clearInterval(activeTimer);
-    const screen = node('div', 'login-screen');
+    const screen = node('main', 'login-screen'); screen.id = 'main'; screen.tabIndex = -1;
     const story = node('div', 'login-story');
     const words = node('div');
     append(words, node('div', 'eyebrow', 'A little less drift. A lot more clarity.'));
@@ -268,7 +269,7 @@
       Object.keys(state).forEach(key => state[key] = Array.isArray(result[key]) ? result[key] : []);
       state.packs.forEach(p => {
         const d = drafts.get(p.id);
-        if ((!d || !d.dirty) && packWrites.get(p.id) !== 'saving') drafts.set(p.id, {content: p.content || '', savedContent: p.content || '', baseRevision: p.draftRevision, dirty: false});
+        if ((!d || !d.dirty) && !['saving', 'restoring'].includes(packWrites.get(p.id))) drafts.set(p.id, {content: p.content || '', savedContent: p.content || '', baseRevision: p.draftRevision, dirty: false});
       });
       authenticated = true; connectionError = false; lastRefreshed = new Date().toISOString();
       if (initial || !document.getElementById('content')) renderShell();
@@ -417,7 +418,7 @@
     const grid = node('div', 'editor-grid');
     append(grid, append(node('div', 'editor-column'), node('div', 'column-label', 'Markdown · draft'), source), append(node('div', 'editor-column'), node('div', 'column-label', 'Preview · raw HTML is disabled'), preview)); parent.append(grid);
     source.addEventListener('input', () => {
-      const d = drafts.get(p.id); d.content = source.value; d.dirty = d.content !== d.savedContent;
+      const d = drafts.get(p.id); d.content = source.value; d.dirty = d.content !== d.savedContent; d.editVersion = (d.editVersion || 0) + 1;
       renderMarkdown(preview, d.content); refreshEditorStatus();
     });
     const status = node('span'); status.id = 'draft-save-status';
@@ -432,7 +433,7 @@
     if (version) version.replaceChildren(badge(p.publishedVersion ? `v${p.publishedVersion} published` : 'Not published yet', p.publishedVersion ? 'good' : 'neutral'));
     const status = document.getElementById('draft-save-status');
     const writing = packWrites.get(selectedPack);
-    if (status) status.textContent = `${writing === 'saving' ? 'Saving draft…' : writing === 'publishing' ? 'Publishing…' : d.dirty ? 'Unsaved changes' : 'Draft saved'} · ${new TextEncoder().encode(d.content).length.toLocaleString()} bytes · revision ${d.baseRevision}`;
+    if (status) status.textContent = `${writing === 'saving' ? 'Saving draft…' : writing === 'publishing' ? 'Publishing…' : writing === 'restoring' ? 'Restoring draft…' : d.dirty ? 'Unsaved changes' : 'Draft saved'} · ${new TextEncoder().encode(d.content).length.toLocaleString()} bytes · revision ${d.baseRevision}`;
     const source = document.getElementById('draft-editor');
     if (source && !d.dirty && source.value !== d.content) {
       source.value = d.content;
@@ -450,6 +451,7 @@
     }
     const observed = document.getElementById('policy-observed');
     if (observed) observed.textContent = p.paused ? 'Delivery is paused. Sync now will not resume it.' : !p.publishedVersion ? 'Publish a version before a device can install this pack.' : p.mode === 'manual' ? 'Devices wait for Sync now or a local Agent once command.' : `Agents check this pack every ${p.intervalSeconds} seconds while connected.`;
+    if (activePolicyForm?.id === p.id && activePolicyForm.form.isConnected) activePolicyForm.update(p);
     const coverage = document.getElementById('pack-coverage');
     if (coverage && document.activeElement?.id !== 'draft-editor') preserveInteraction(coverage, () => coverage.replaceChildren(coveragePanel(p.id)));
   }
@@ -502,24 +504,51 @@
     const check = node('label', 'check-field'); append(check, paused, node('span', '', 'Pause delivery'));
     const save = button('Save policy', null, 'full'); save.type = 'submit';
     const error = node('p', 'error-inline'); error.setAttribute('role', 'alert');
+    const status = node('p', 'field-hint'); status.setAttribute('role', 'status');
     const intervalField = field('Check interval (seconds)', interval, 'Delivery interval, separate from the 15-second device heartbeat.');
+    const values = () => ({mode: mode.value, intervalSeconds: Number(interval.value), paused: paused.checked});
+    const policyValues = latest => ({mode: latest.mode, intervalSeconds: latest.intervalSeconds, paused: !!latest.paused});
+    const samePolicy = (left, right) => left.mode === right.mode && left.intervalSeconds === right.intervalSeconds && left.paused === right.paused;
+    let baseline = values(); let saving = false; let syncing = false;
+    function setValues(next) { mode.value = next.mode; interval.value = next.intervalSeconds; paused.checked = next.paused; }
     function updateMode() { interval.disabled = mode.value === 'manual'; intervalField.classList.toggle('hidden', mode.value === 'manual'); }
-    mode.addEventListener('change', updateMode); updateMode();
-    append(form, field('Delivery mode', mode), intervalField, check, save, error, node('div', 'divider'));
+    function updateControls(latest = pack(p.id) || p) {
+      updateMode(); save.disabled = saving; sync.disabled = syncing || !latest.publishedVersion;
+      status.textContent = saving ? 'Saving policy…' : samePolicy(values(), baseline) ? '' : 'Unsaved policy changes.';
+    }
+    function updatePolicy(latest) {
+      if (!saving && samePolicy(values(), baseline)) { baseline = policyValues(latest); setValues(baseline); }
+      updateControls(latest);
+    }
+    mode.addEventListener('change', () => updateControls());
+    interval.addEventListener('input', () => updateControls());
+    paused.addEventListener('change', () => updateControls());
+    append(form, field('Delivery mode', mode), intervalField, check, save, status, error, node('div', 'divider'));
     const sync = button('↻  Sync now', async () => {
-      await busy(sync, async () => {
+      if (syncing || !pack(p.id)?.publishedVersion) return;
+      syncing = true; updateControls();
+      try {
         try { await api(`/api/packs/${encodeURIComponent(p.id)}/sync-now`, 'POST', {}); await refresh(); toast(pack(p.id)?.paused ? 'Request recorded. Delivery remains paused.' : 'Sync requested. Devices will check when they next connect.'); }
         catch (err) { showError(err); }
-      });
+      } finally { syncing = false; updateControls(); }
     }, 'full');
-    sync.disabled = !p.publishedVersion;
+    updateControls();
+    activePolicyForm = {id: p.id, form, update: updatePolicy};
     const observed = node('p', 'policy-info'); observed.id = 'policy-observed'; append(form, sync, observed);
     form.addEventListener('submit', async event => {
       event.preventDefault(); error.textContent = '';
-      await busy(save, async () => {
-        try { await api(`/api/packs/${encodeURIComponent(p.id)}/policy`, 'PATCH', {mode: mode.value, intervalSeconds: Number(interval.value), paused: paused.checked}); await refresh(); toast('Delivery policy saved.'); }
+      if (saving) return;
+      const submitted = values(); saving = true; updateControls();
+      try {
+        try {
+          const updated = await api(`/api/packs/${encodeURIComponent(p.id)}/policy`, 'PATCH', submitted);
+          baseline = policyValues(updated);
+          if (samePolicy(values(), submitted)) setValues(baseline);
+          const index = state.packs.findIndex(item => item.id === p.id); if (index >= 0) state.packs[index] = updated;
+          await refresh(); toast('Delivery policy saved.');
+        }
         catch (err) { showError(err, error); }
-      });
+      } finally { saving = false; updatePolicy(pack(p.id) || p); }
     }); policy.append(form); aside.append(policy);
     const scope = panel('Where it goes', 'Local targets stay under your control.');
     const scoped = state.devices.filter(d => !d.revoked && (d.packIds || []).includes(p.id));
@@ -600,15 +629,31 @@
     append(footer, button('Close', closeDialog), button('Restore to draft', () => showRestore(p.id, release)));
   }
   function showRestore(id, release) {
-    const d = drafts.get(id); const p = pack(id); const {body, footer} = openDialog(`Restore version ${release.version} to draft?`);
+    const d = drafts.get(id); const p = pack(id); if (!p || !d || packWrites.has(id)) return;
+    const {body, footer} = openDialog(`Restore version ${release.version} to draft?`);
     body.append(node('p', '', 'This copies the historical content into a new draft revision. Published history and installed files stay as they are until you explicitly publish again.'));
     if (d.dirty) body.append(note('You have unsaved edits in this tab. Save them first or explicitly discard them before restoring.', 'warning'));
     const error = node('p', 'error-inline'); body.append(error);
     const restore = button('Restore to draft', async () => {
-      await busy(restore, async () => {
-        try { const restored = await api(`/api/packs/${encodeURIComponent(id)}/restore`, 'POST', {version: release.version, baseRevision: p.draftRevision}); drafts.set(id, {content: restored.content, savedContent: restored.content, baseRevision: restored.draftRevision, dirty: false}); closeDialog(); await refresh(); packTab = 'write'; renderView(); toast(`Version ${release.version} restored to draft. It has not been published.`); }
-        catch (err) { showError(err, error); }
-      });
+      const current = drafts.get(id); if (!current || current.dirty || packWrites.has(id)) return;
+      const originalContent = current.content; const editVersion = current.editVersion || 0;
+      packWrites.set(id, 'restoring'); refreshEditorStatus();
+      try { await busy(restore, async () => {
+        try {
+          const restored = await api(`/api/packs/${encodeURIComponent(id)}/restore`, 'POST', {version: release.version, baseRevision: current.baseRevision});
+          const latest = drafts.get(id);
+          const edited = latest.content !== originalContent || (latest.editVersion || 0) !== editVersion;
+          if (!edited) latest.content = restored.content;
+          latest.savedContent = restored.content; latest.baseRevision = restored.draftRevision; latest.dirty = latest.content !== restored.content;
+          const index = state.packs.findIndex(item => item.id === id); if (index >= 0) state.packs[index] = restored;
+          details.delete(id);
+          if (body.isConnected) closeDialog();
+          await refresh();
+          if (view === 'packs' && selectedPack === id && packTab !== 'write') { packTab = 'write'; renderView(); }
+          refreshEditorStatus();
+          toast(latest.dirty ? 'Version restored to the Hub draft. Your newer edits are preserved and have not been saved.' : `Version ${release.version} restored to draft. It has not been published.`);
+        } catch (err) { showError(err, error); }
+      }); } finally { packWrites.delete(id); refreshEditorStatus(); }
     }, 'primary'); restore.disabled = d.dirty;
     append(footer, button('Cancel', closeDialog), restore);
   }

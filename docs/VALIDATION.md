@@ -1,6 +1,6 @@
 # Prototype validation
 
-Recorded 2026-10-08 for `0.1.0-alpha.1`. These are implementation checks, not an independent security audit or a certification of AI application behavior.
+Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser and UI checks updated 2026-10-12. These are implementation checks, not an independent security audit or a certification of AI application behavior.
 
 | Check | Result and scope |
 | --- | --- |
@@ -15,15 +15,18 @@ Recorded 2026-10-08 for `0.1.0-alpha.1`. These are implementation checks, not an
 | Build targets | Built macOS arm64/amd64 and Linux arm64/amd64 executables. macOS arm64 and a Linux arm64 virtual environment were exercised; amd64 builds were not runtime-tested. |
 | Linux runtime | Official `golang:1.25-bookworm` image, Go 1.25.14, Linux arm64 under OrbStack (kernel 6.19.13). Full race tests, vet, build, and executable version check passed with an unprivileged user, read-only source, and tmpfs test storage. This is not physical-device or power-loss testing. |
 | UI static checks | JavaScript syntax passed. DOM insertion uses safe text APIs; no external runtime dependencies, browser credential storage, or inline handlers. |
-| Prototype UI regression checks | Seven deterministic DOM-model cases passed: duplicate saves, edits during an in-flight save, publish/save exclusion, enrollment scope in commands, preview-before-apply and individual command copying, clipboard-denial fallback, and stable focus/scroll restoration. These are not browser rendering tests. |
+| Prototype UI regression checks | Thirteen deterministic DOM-model cases passed, including delayed save/restore edit preservation and write exclusion, clean/dirty policy refresh, policy-save baselines, the login landmark, scoped command copying, clipboard fallback, and focus/scroll restoration. These are separate from the Chrome checks below. |
 | Prototype launcher | The local start script built and served English assets, retained authentication, published a synthetic pack, and preserved its version and administrator identity through restart. No application targets were changed by startup. |
-| Browser visual/interaction checks | Not completed in this environment: browser automation was unavailable and native screen/accessibility permission was pending. Responsive appearance, keyboard behavior, and complete browser/API interaction still need a real-browser check. |
+| Browser visual/interaction checks | Passed in headless Chrome 154.0.8037.99 on macOS arm64 at 1440×1000, 390×844, and 320×844. Login/rejection, draft/save/publish, delayed restore edits, cross-client policy refresh, enrollment/guide/copy, real Agent preview/apply/receipt, pause, local conflict, revocation, modal Escape, and layout bounds were exercised with synthetic local fixtures. No unexpected browser warnings or JavaScript errors. Screenshots were inspected outside the checkout. Browser plugin was unavailable; existing Playwright 1.62.1 and a separate temporary Chrome profile were used. |
+| Browser regression fixes | Reproduced and fixed restoration overwriting concurrent edits and stale policy controls. Added the missing login skip-link target and fixed 320px navigation overflow. |
 | Physical devices and remote HTTPS | Not deployed or exercised. TLS/security policy is tested in code; an actual remote certificate/proxy deployment remains an operator acceptance check. |
 | Service startup templates | Documented examples only. launchd/systemd installation and reboot behavior have not been verified here. |
 | Public CI/release | Workflows are included. Their execution and a published binary release are not claimed by this local record. |
 | App loading / AI behavior | Unverified. RuleSend reports file observations, not model compliance or automatic existing-chat refresh. |
 
 Linux image digest: `sha256:3b4a11519ad929d1e1d261a12cff056f0c85b735253d7d861346b9c6f8b36437`. The disposable container mounted no host credentials and published no ports.
+
+Browser tests used an isolated loopback Hub, private temporary credentials, and disposable rule files. They did not bind real application rule paths or alter existing sync jobs. Some refresh/concurrency checks used controlled timers and delayed network responses. Safari, Firefox, physical-device HTTPS deployment, and application rule loading were not exercised.
 
 Public-source review found no copied personal/company rules, real device inventory, runtime databases, or credentials. Dependency license texts are included. The declared module baseline is Go 1.25; the included CI matrix is configured to exercise that version on macOS/Linux when the repository is published.
 

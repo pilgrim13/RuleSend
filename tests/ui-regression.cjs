@@ -41,7 +41,7 @@ async function runRuleSendChecks(source) {
     const marker = "  window.addEventListener('beforeunload'";
     assert(source.includes(marker), 'Cannot locate app startup boundary');
     const instrumented = source.slice(0, source.indexOf(marker)).replace('(() => {', 'return (() => {') + `
-      return {state, drafts, packWrites, saveDraft, showPublish, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction,
+      return {state, drafts, packWrites, saveDraft, showPublish, showRestore, closeDialog, renderEditor, renderPolicy, renderLogin, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction,
         context(nextView, id) { view = nextView; selectedPack = id; },
         hooks(values) {
           if (values.api) api = values.api;
@@ -72,7 +72,8 @@ async function runRuleSendChecks(source) {
     assert(e.doc.getElementById('save-draft').disabled && e.doc.getElementById('publish-draft').disabled, 'Save and publish must stay disabled after typing during save');
     await e.app.saveDraft(p.id, e.doc.getElementById('save-draft'));
     e.app.showPublish(p.id);
-    assert(puts === 1 && !e.dialog.open, 'Repeated save or publish during save must not issue a competing mutation');
+    e.app.showRestore(p.id, {version: 1});
+    assert(puts === 1 && !e.dialog.open, 'Repeated save, publish, or restore during save must not issue a competing mutation');
     wait.resolve({...p, content: 'B', draftRevision: 2}); await pending;
     assert(draft.content === 'C' && draft.savedContent === 'B' && draft.baseRevision === 2 && draft.dirty, 'Typing during save must survive and use the returned revision');
     assert(!e.app.packWrites.has(p.id) && !e.doc.getElementById('save-draft').disabled, 'Save lock must clear for the next intentional save');
@@ -103,6 +104,100 @@ async function runRuleSendChecks(source) {
     wait.resolve({version: 1}); await pending;
     assert(!e.app.packWrites.has(p.id), 'Publish lock must clear');
     results.push('PASS: publication also blocks competing saves');
+  }
+  for (const finalText of ['C', 'A']) {
+    const e = makeEnvironment(); const p = setupPack(e); const wait = deferred(); let mutations = 0;
+    const draft = e.app.drafts.get(p.id); draft.content = 'A'; draft.dirty = false;
+    e.app.renderEditor(e.doc.getElementById('content'), p);
+    e.app.hooks({api: async path => {
+      if (path.endsWith('/restore')) { mutations += 1; return wait.promise; }
+      assert(path === '/api/state', 'A pending restore must block competing draft writes');
+      return {packs: [p], devices: [], receipts: [], events: []};
+    }, refresh: async () => {}, render: () => {}});
+    e.app.showRestore(p.id, {version: 1});
+    const confirm = e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === 'Restore to draft');
+    const pending = confirm.trigger('click');
+    await confirm.trigger('click');
+    e.app.closeDialog();
+    const editor = e.doc.getElementById('draft-editor'); editor.focus();
+    editor.value = 'C'; await editor.trigger('input');
+    editor.value = finalText; await editor.trigger('input');
+    await e.app.loadSnapshot();
+    assert(e.app.drafts.get(p.id) === draft, 'Polling cannot replace a draft while restoration is pending');
+    assert(e.doc.getElementById('save-draft').disabled && e.doc.getElementById('publish-draft').disabled, 'Typing during restore cannot enable competing writes');
+    await e.app.saveDraft(p.id, e.doc.getElementById('save-draft'));
+    e.app.showPublish(p.id); e.app.showRestore(p.id, {version: 1});
+    assert(mutations === 1 && !e.dialog.open, 'A restore in flight must block save, publish, and another restore');
+    wait.resolve({...p, content: 'Historical', draftRevision: 2}); await pending;
+    assert(draft.content === finalText && draft.savedContent === 'Historical' && draft.baseRevision === 2 && draft.dirty, 'Restoration must keep later edits, including edits reverted to the original text, against the restored Hub baseline');
+    assert(editor.value === finalText && e.doc.activeElement === editor, 'Restore completion must preserve the active editor and its text');
+    assert(!e.app.packWrites.has(p.id) && !e.doc.getElementById('save-draft').disabled, 'The restored draft must allow the next intentional save');
+    results.push(`PASS: delayed restore blocks competing writes and preserves ${finalText === 'A' ? 'reverted' : 'newer'} local edits`);
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e);
+    const draft = e.app.drafts.get(p.id); draft.content = 'A'; draft.dirty = false;
+    e.app.renderEditor(e.doc.getElementById('content'), p);
+    e.app.hooks({api: async () => ({...p, content: 'Historical', draftRevision: 2}), refresh: async () => {}, render: () => {}});
+    e.app.showRestore(p.id, {version: 1});
+    await e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === 'Restore to draft').trigger('click');
+    assert(!draft.dirty && draft.content === 'Historical' && e.doc.getElementById('draft-editor').value === 'Historical', 'A restore without subsequent edits must display the restored saved content');
+    assert(!e.dialog.open && !e.app.packWrites.has(p.id), 'Successful restore must close its dialog and release its lock');
+    results.push('PASS: an untouched draft adopts restored history without publishing');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); let remote = {...p};
+    e.doc.getElementById('content').append(e.app.renderPolicy(p));
+    const elements = e.descendants(e.doc.getElementById('content'));
+    const mode = elements.find(el => el.tagName === 'SELECT');
+    const interval = elements.find(el => el.type === 'number');
+    const paused = elements.find(el => el.type === 'checkbox');
+    const sync = elements.find(el => el.tagName === 'BUTTON' && el.textContent.includes('Sync now'));
+    e.app.hooks({api: async () => ({packs: [remote], devices: [], receipts: [], events: []}), render: () => {}});
+    assert(sync.disabled, 'A pack without a release cannot request sync');
+    interval.focus(); remote = {...p, mode: 'auto', intervalSeconds: 120, paused: true, publishedVersion: 1};
+    await e.app.loadSnapshot();
+    assert(mode.value === 'auto' && Number(interval.value) === 120 && paused.checked && !interval.disabled && !sync.disabled, 'Polling must update clean policy controls and enable sync after publishing elsewhere');
+    assert(e.doc.activeElement === interval && interval.isConnected, 'Policy refresh cannot replace or refocus an active control');
+    interval.value = '240'; await interval.trigger('input');
+    mode.value = 'manual'; await mode.trigger('change'); paused.checked = false; await paused.trigger('change');
+    remote = {...remote, intervalSeconds: 300}; await e.app.loadSnapshot();
+    assert(mode.value === 'manual' && Number(interval.value) === 240 && !paused.checked && interval.disabled, 'Polling must preserve all unsaved policy fields');
+    assert(e.doc.getElementById('policy-observed').textContent.includes('paused'), 'Observed delivery policy must still report fresh Hub state while local controls are dirty');
+    assert(e.doc.activeElement === interval, 'Dirty policy polling cannot steal focus');
+    results.push('PASS: policy heartbeat updates clean controls and sync availability without overwriting dirty controls or focus');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const wait = deferred(); let patches = 0; let remote = {...p};
+    e.doc.getElementById('content').append(e.app.renderPolicy(p));
+    const elements = e.descendants(e.doc.getElementById('content'));
+    const form = elements.find(el => el.tagName === 'FORM');
+    const mode = elements.find(el => el.tagName === 'SELECT');
+    const interval = elements.find(el => el.type === 'number');
+    const save = elements.find(el => el.tagName === 'BUTTON' && el.textContent === 'Save policy');
+    const status = elements.find(el => el.attributes.role === 'status');
+    e.app.hooks({api: async (path, method, body) => {
+      if (path.endsWith('/policy')) { patches += 1; if (patches === 1) return wait.promise; remote = {...remote, ...body}; return remote; }
+      return {packs: [remote], devices: [], receipts: [], events: []};
+    }, render: () => {}});
+    mode.value = 'auto'; await mode.trigger('change'); interval.value = '120'; await interval.trigger('input');
+    const pending = form.trigger('submit');
+    interval.value = '240'; await interval.trigger('input'); await e.app.loadSnapshot(); await form.trigger('submit');
+    assert(save.disabled && patches === 1 && Number(interval.value) === 240, 'Policy edits during a pending save must survive polling and cannot issue a duplicate save');
+    remote = {...p, mode: 'auto', intervalSeconds: 120}; wait.resolve(remote); await pending;
+    assert(Number(interval.value) === 240 && status.textContent === 'Unsaved policy changes.' && !save.disabled, 'Policy save response must retain newer edits against the returned saved baseline');
+    await form.trigger('submit');
+    assert(patches === 2 && !status.textContent && Number(interval.value) === 240, 'Explicitly saving the remaining policy edit must establish a clean baseline');
+    remote = {...remote, intervalSeconds: 360}; await e.app.loadSnapshot();
+    assert(Number(interval.value) === 360 && !status.textContent, 'A policy saved cleanly must resume following later Hub updates');
+    results.push('PASS: policy save protects later edits, blocks duplicate submissions, and resets the saved baseline');
+  }
+  {
+    const e = makeEnvironment(); e.app.renderLogin();
+    const main = e.doc.getElementById('main');
+    assert(main?.tagName === 'MAIN' && main.tabIndex === -1 && main.isConnected, 'The login screen must provide the focusable main landmark targeted by the persistent skip link');
+    assert(e.descendants(main).some(el => el.tagName === 'FORM'), 'The login form must be contained by the main landmark');
+    results.push('PASS: the login skip link has a focusable main landmark containing the form');
   }
   {
     const e = makeEnvironment(); ['pack-a', 'pack-b', 'unrelated'].forEach(id => setupPack(e, id));
