@@ -15,7 +15,7 @@ Core runtime checks recorded 2026-10-08 for `0.1.0-alpha.1`; browser, physical-d
 | Build targets | Built macOS arm64/amd64 and Linux arm64/amd64 executables. macOS arm64 and a Linux arm64 virtual environment were exercised; amd64 builds were not runtime-tested. |
 | Linux runtime | Official `golang:1.25-bookworm` image, Go 1.25.14, Linux arm64 under OrbStack (kernel 6.19.13). Full race tests, vet, build, and executable version check passed with an unprivileged user, read-only source, and tmpfs test storage. This is not physical-device or power-loss testing. |
 | UI static checks | JavaScript syntax passed. DOM insertion uses safe text APIs; no external runtime dependencies, browser credential storage, or inline handlers. |
-| Prototype UI regression checks | Eighteen deterministic DOM-model cases passed, including delayed save/restore edit preservation and write exclusion, clean/dirty policy refresh, policy-save baselines, the login landmark, scoped command copying, clipboard fallback, and focus/scroll restoration. Five added cases cover source HTTP 202 acceptance, frozen queue/completion updates with newer edits, failure/rejection ownership, explicit request retry, and unchanged ordinary HTTP 200 publication. These are separate from the Chrome checks below. |
+| Prototype UI regression checks | Twenty-nine deterministic DOM-model cases passed, covering draft/write exclusion, policy refresh, authentication feedback, scoped command copying, source queue ownership, and AI proposal authoring. Eight AI cases cover scoped prompt copying and fallback, schema/size/Unicode checks, consent, local-only approval, cancellation, stale and concurrent edits, safe text rendering, bounded diff work, and consent withdrawal during approval. These are separate from the Chrome checks below. |
 | Git-backed source API | Synthetic Go cases passed for initial proof/ownership anchoring, separate publisher authentication, frozen draft requests with later saves, queue concurrency, idempotent completion, proof conflicts, retryable failure and terminal rejection, retained jobs/identity on restart, repeated identical publication, and rejection of silently omitted source configuration. These remain separate from the live publisher checks below. |
 | Git-backed browser and delivery | Passed in headful Chrome on the office Mac using a private browser profile, the existing scoped SOCKS transport, and normal HTTPS certificate verification. Login used Secure, HttpOnly, SameSite=Strict session cookies. Draft edit/save/compare/restore and explicit queued publication were exercised. The final changed-source and restored-source browser checks reported no JavaScript errors. Identical content reached both global Codex targets; a harmless trailing-newline change then produced Git content and manifest releases before Hub publication and two applied read-back receipts. Restoring the original approved bytes produced another source release and two further applied receipts. |
 | Private integration fixtures | Seven generic Git-publisher checks, thirteen receipt-observer checks, and nine browser-launcher checks passed in temporary fixtures. These adapters remain deployment-specific and outside the public checkout; they do not establish a bundled general-purpose Git publisher or universal browser/transport support. |
@@ -92,3 +92,22 @@ Public-source review found no copied personal/company rules, real device invento
 ## Before relying on a deployment
 
 Use a synthetic pack on a test target first. Confirm a publish arrives, edit the managed block locally and confirm conflict preservation, pause delivery, restore a draft from history, and revoke a disposable device. Review the target's actual application loading behavior in a fresh session. Check the browser UI and remote HTTPS deployment in the environment you intend to use. Keep independent backups and avoid multiple automatic writers for the same target.
+
+## AI-assisted authoring verification
+
+The prompt-copy, proposal-import, line comparison, consent, local-draft approval,
+explicit save/publication, and stale-response rejection passed in real Chrome on
+macOS arm64 using an isolated temporary Hub and synthetic rules. A real Agent
+installed the published synthetic content into a disposable Codex target, retained
+its outside text, and reported a matching read-back receipt. Review dialogs and
+editor layout fit 1440px, 390px, and 320px viewports; screenshots were inspected.
+The clipboard implementation was mocked to avoid changing the system clipboard.
+No live rules, global application targets, AI providers, or model calls were used.
+The Hub test suite and 29 deterministic DOM-model checks passed; the executable
+was built with an official checksum-verified Go 1.27.1 toolchain.
+
+This establishes the manual proposal workflow, not the quality or safety of an
+AI's recommendations. Existing source-queue regression checks passed; the AI
+workflow does not change those APIs. It does not establish that imported rules
+were read or followed by an AI, or that arbitrary provider outputs will satisfy
+the requested JSON format.

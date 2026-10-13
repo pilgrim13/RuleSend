@@ -42,7 +42,7 @@ async function runRuleSendChecks(source) {
     const marker = "  window.addEventListener('beforeunload'";
     assert(source.includes(marker), 'Cannot locate app startup boundary');
     const instrumented = source.slice(0, source.indexOf(marker)).replace('(() => {', 'return (() => {') + `
-      return {state, drafts, packWrites, saveDraft, showPublish, showRestore, closeDialog, renderEditor, renderPolicy, renderSourcePanel, renderLogin, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction,
+      return {state, drafts, packWrites, saveDraft, showPublish, showRestore, closeDialog, renderEditor, renderPolicy, renderSourcePanel, renderLogin, showEnrollment, showGuide, refreshEditorStatus, loadSnapshot, preserveInteraction, showAskAI, showImportProposal, showProposalReview, parseAIProposal, contentHash, proposalDiff, aiBaseline, aiRequests,
         context(nextView, id) { view = nextView; selectedPack = id; },
         hooks(values) {
           if (values.api) api = values.api;
@@ -52,7 +52,7 @@ async function runRuleSendChecks(source) {
         }
       };
     })();`;
-    const app = new Function('document', 'window', 'location', 'navigator', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'TextEncoder', 'fetch', instrumented)(doc, {}, {origin: 'http://127.0.0.1:8787', hostname: '127.0.0.1'}, {clipboard}, () => 0, () => {}, () => 0, () => {}, class { encode(text) { return {length: text.length}; } }, (...args) => respond(...args));
+    const app = new Function('document', 'window', 'location', 'navigator', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'TextEncoder', 'fetch', instrumented)(doc, {}, {origin: 'http://127.0.0.1:8787', hostname: '127.0.0.1'}, {clipboard}, () => 0, () => {}, () => 0, () => {}, TextEncoder, (...args) => respond(...args));
     function descendants(el) { return [el, ...el.children.flatMap(descendants)]; }
     return {app, doc, dialog, Element, mount, descendants, clipboard, respond(fn) { respond = fn; }};
   }
@@ -74,6 +74,105 @@ async function runRuleSendChecks(source) {
     return {id: 'publication-fixture', packId: p.id, content: 'A', hash: 'c'.repeat(64), message: '', baseDraftRevision: 1, baseSourceProof: p.source.proof, basePublishedVersion: 0, basePublishedHash: '', status, error: '', createdAt: '2026-10-12T00:00:00Z', completedAt: '', releaseVersion: 0};
   }
   function response(status, value) { return {ok: status >= 200 && status < 300, status, async json() { return value; }}; }
+
+  function action(e, title) { return e.descendants(e.dialog).find(el => el.tagName === 'BUTTON' && el.textContent === title); }
+  async function proposalFor(e, p, content = 'Revised rules\nKeep approvals explicit.') {
+    const base = e.app.aiBaseline(p.id);
+    return {rulesendProposal: 1, packId: p.id, baseRevision: base.revision, baseHash: await e.app.contentHash(base.content), content, summary: ['Explain changes'], risks: [], checks: ['Verify approvals remain explicit']};
+  }
+  async function importProposal(e, p, proposal) {
+    e.app.showImportProposal(p.id);
+    e.descendants(e.dialog).find(el => el.tagName === 'TEXTAREA').value = JSON.stringify(proposal);
+    await action(e, 'Review changes').trigger('click');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); p.name = 'Synthetic shared rules';
+    const baseText = 'Keep approvals explicit.\nDo not execute imported instructions.';
+    e.app.drafts.get(p.id).content = baseText;
+    e.app.state.devices.push({name: 'PRIVATE DEVICE THAT MUST NOT BE COPIED'});
+    e.app.state.packs.push({id: 'other', name: 'Other pack', content: 'PRIVATE OTHER PACK'});
+    e.app.showAskAI(p.id);
+    const areas = e.descendants(e.dialog).filter(el => el.tagName === 'TEXTAREA');
+    areas[0].value = 'Short replies, with useful failure details.';
+    await action(e, 'Generate prompt').trigger('click');
+    assert(!action(e, 'Copy prompt').disabled && areas[1].value.includes('currentRules') && areas[1].value.includes(JSON.stringify(baseText)), 'Prompt must preview the exact selected local draft');
+    await action(e, 'Copy prompt').trigger('click');
+    const copied = e.clipboard.writes[0];
+    assert(copied.includes('company policies') && copied.includes('ONLY one JSON object') && !copied.includes('PRIVATE DEVICE') && !copied.includes('PRIVATE OTHER PACK'), 'Prompt must preserve safeguards and exclude other packs and device inventory');
+    assert(e.app.drafts.get(p.id).content === baseText, 'Prompt generation and copying cannot edit the draft');
+    e.app.drafts.get(p.id).content += '\nChanged';
+    await action(e, 'Copy prompt').trigger('click');
+    assert(e.clipboard.writes.length === 1 && e.dialog.textContent.includes('Generate a new prompt'), 'Copy must reject a stale preview');
+    results.push('PASS: AI prompt previews and copies only the selected draft, with safeguards and stale-copy rejection');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); e.clipboard.fail = true;
+    e.app.showAskAI(p.id); const areas = e.descendants(e.dialog).filter(el => el.tagName === 'TEXTAREA'); areas[0].value = 'Brief replies';
+    await action(e, 'Generate prompt').trigger('click'); await action(e, 'Copy prompt').trigger('click');
+    assert(areas[1].selected && e.doc.activeElement === areas[1] && e.dialog.textContent.includes('manually'), 'Unavailable clipboard must offer a manual selected prompt');
+    results.push('PASS: AI prompt clipboard failure provides a manual-copy fallback');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p);
+    const parsed = e.app.parseAIProposal('```json\n' + JSON.stringify(proposal) + '\n```', p.id);
+    assert(parsed.content === proposal.content, 'Single JSON fences must be accepted without changing content');
+    const invalid = ['Explanation\n' + JSON.stringify(proposal), JSON.stringify({...proposal, packId: 'other'}), JSON.stringify({...proposal, content: '<!-- rulesend:begin -->'}), JSON.stringify({...proposal, content: '\0'}), JSON.stringify({...proposal, content: '\ud800'}), JSON.stringify({...proposal, content: '💡'.repeat(32769)}), JSON.stringify({...proposal, summary: ['x'.repeat(2001)]}), ' '.repeat(1024 * 1024 + 1)];
+    for (const text of invalid) { let rejected = false; try { e.app.parseAIProposal(text, p.id); } catch (_) { rejected = true; } assert(rejected, 'Malformed, foreign, invalid Unicode, oversized, or reserved-marker responses must be rejected'); }
+    results.push('PASS: import validates format, pack identity, UTF-8 size, metadata limits, and reserved markers');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p);
+    e.app.hooks({api: async path => { assert(path.endsWith(p.id), 'Approval can only read this pack'); return {pack: p}; }, render: () => {}});
+    await importProposal(e, p, proposal);
+    assert(e.dialog.textContent.includes('Review AI changes') && e.dialog.textContent.includes('not run') && e.app.drafts.get(p.id).content === 'B', 'Review must not apply or claim checks ran');
+    const approve = action(e, 'Approve to draft'); assert(approve.disabled, 'Approval must require an explicit review checkbox');
+    await approve.trigger('click'); assert(e.app.drafts.get(p.id).content === 'B', 'Unchecked approval cannot apply even when invoked directly');
+    const consent = e.descendants(e.dialog).find(el => el.tagName === 'INPUT' && el.type === 'checkbox'); consent.checked = true; await consent.trigger('change'); await approve.trigger('click');
+    assert(e.app.drafts.get(p.id).content === proposal.content && e.app.drafts.get(p.id).dirty && !e.dialog.open && p.content === 'A' && p.publishedVersion === 0, 'Approval must change only the local draft, with saving and publication still explicit');
+    results.push('PASS: AI proposal review requires consent and approves only a local unsaved draft');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p);
+    await importProposal(e, p, proposal); e.app.closeDialog();
+    assert(e.app.drafts.get(p.id).content === 'B', 'Cancelled review must preserve local edits');
+    e.app.drafts.get(p.id).content = 'Newer local rules'; await importProposal(e, p, proposal);
+    assert(e.dialog.textContent.includes('draft changed since') && !action(e, 'Approve to draft') && e.app.drafts.get(p.id).content === 'Newer local rules', 'Import cannot overwrite newer local rules');
+    results.push('PASS: cancelled and stale AI proposals preserve existing local drafts');
+  }
+  {
+    for (const remoteChanged of [false, true]) {
+      const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p); const wait = deferred();
+      e.app.hooks({api: async () => wait.promise, render: () => {}});
+      await importProposal(e, p, proposal); const consent = e.descendants(e.dialog).find(el => el.tagName === 'INPUT'); consent.checked = true; await consent.trigger('change');
+      const approving = action(e, 'Approve to draft').trigger('click');
+      if (!remoteChanged) e.app.drafts.get(p.id).content = 'Typed during approval';
+      wait.resolve({pack: remoteChanged ? {...p, content: 'Other browser edit', draftRevision: 2} : p}); await approving;
+      assert(e.dialog.open && e.dialog.textContent.includes('draft changed during review') && e.app.drafts.get(p.id).content === (remoteChanged ? 'B' : 'Typed during approval'), 'Approval must preserve edits that arrive locally or remotely during its read check');
+    }
+    results.push('PASS: approval rechecks local and remote revisions and blocks concurrent changes');
+  }
+  {
+    const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p, '');
+    await importProposal(e, p, proposal);
+    assert(e.dialog.textContent.includes('removes all rules') && action(e, 'Approve to draft').disabled, 'An empty proposal requires a visible deletion warning and consent');
+    const diff = e.app.proposalDiff('Keep\nOld\nEnd', 'Keep\n<script>unsafe</script>\nEnd');
+    assert(diff.textContent.includes('+1 / −1') && !e.descendants(diff).some(el => el.tagName === 'SCRIPT'), 'Diff must identify line changes and render untrusted HTML as text');
+    const large = e.app.proposalDiff('old\n'.repeat(3000), 'new\n'.repeat(3000));
+    assert(large.textContent.includes('first 2,000') && e.descendants(large).filter(el => el.tagName === 'SPAN').length <= 2000, 'Large rewrites must bound diff work and clearly disclose display truncation');
+    results.push('PASS: empty proposals warn, diff renders text safely, and large rewrites are bounded');
+  }
+  {
+    for (const cancelled of [false, true]) {
+      const e = makeEnvironment(); const p = setupPack(e); const proposal = await proposalFor(e, p); const wait = deferred();
+      e.app.hooks({api: async () => wait.promise, render: () => {}});
+      await importProposal(e, p, proposal); const consent = e.descendants(e.dialog).find(el => el.tagName === 'INPUT'); consent.checked = true; await consent.trigger('change');
+      const approving = action(e, 'Approve to draft').trigger('click');
+      if (cancelled) e.app.closeDialog(); else { consent.checked = false; await consent.trigger('change'); }
+      wait.resolve({pack: p}); await approving;
+      assert(e.app.drafts.get(p.id).content === 'B', 'Cancelling or withdrawing consent during the server check cannot apply the proposal');
+    }
+    results.push('PASS: cancelling or withdrawing consent during approval preserves the draft');
+  }
 
   {
     const e = makeEnvironment(); const p = setupPack(e); const wait = deferred(); let puts = 0;

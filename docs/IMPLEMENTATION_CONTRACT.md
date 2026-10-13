@@ -8,6 +8,18 @@ AI rule-pack authoring and device deployment, not arbitrary filesystem mirroring
 
 One admin; multiple devices. Codex, Claude Code, custom Markdown targets. Claude Chat/Cowork and dots are not automatically configured. HTTPS required off loopback; API credential secrets never placed in URLs/logs. Agent owns network outbound, Hub cannot assign arbitrary local paths or shell commands.
 
+## AI-assisted authoring
+
+The browser offers an explicit prompt-copy and proposal-import workflow without
+provider integration. Only the selected local draft and user request enter the
+reviewable prompt. Imported JSON proposals contain a pack ID, draft revision,
+exact content SHA-256, complete Markdown, and explanatory lists. These identifiers
+detect a changed baseline; they do not authenticate the AI or attest rule safety.
+Review shows bounded highlighted line changes and complete documents. Approval
+requires consent and a fresh check of the saved Hub draft, changes only the local
+draft, and preserves concurrent edits. Save and Publish remain separate explicit
+actions under the existing APIs and source ownership. See [AI_AUTHORING.md](AI_AUTHORING.md).
+
 ## Shared JSON types in internal/core (root owns)
 
 Pack: id, name, description, content (draft text), draftRevision (int64), publishedVersion (int64), publishedHash, mode (auto/manual), intervalSeconds, paused, trigger (int64), updatedAt (RFC3339 UTC), optional source. Release: packId, version, content, hash, message, createdAt, optional source proof. Device: id, name, platform, packIds, revoked, lastSeen. Receipt: deviceId, packId, targetId, adapter, targetLabel, version, hash, status (applied/conflict/error/pending), error (safe description), checkedAt, appLoaded (always unverified), behaviorVerified (always unverified). Event: id, kind, actor, message, createdAt. Snapshot: packs[], devices[], receipts[], events[], publications[] (metadata without frozen content). Target label user-friendly; do not expose full local paths to server.

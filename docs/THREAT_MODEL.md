@@ -160,6 +160,20 @@ A successful HTTP transfer, active heartbeat, process start, or source hash alon
 
 ## Logging and audit
 
+AI-assisted authoring is a manual data-transfer boundary. A copied prompt contains
+the selected local draft and user's request. The user must review that text and
+choose an AI permitted to receive it; RuleSend does not contact providers. Other
+packs, inventory, and runtime credentials are excluded, but secrets already typed
+into a rule or request are not automatically detected or redacted. System clipboard
+and external AI conversation retention are outside Hub control.
+
+Imported proposals are untrusted text. Format, size, pack identity, and baseline
+checks prevent common mistakes, not malicious instructions or policy weakening.
+AI summaries, reported risks, and suggested checks are not attestations. The UI
+renders text safely, requires human review, rechecks local and saved revisions,
+and changes only a draft. Explicit saving/publication and Agent safety remain in
+force. No proposal content is executed; no direct provider credentials are needed.
+
 Audit events should identify actor/device, pack/target identifiers, action, old/new revision, outcome, and time. They should not contain credential material or full private rule bodies by default. Local absolute paths belong in protected local diagnostics, not public examples or central default logs.
 
 Audit logs on a trusted Hub are useful records, not tamper-proof evidence against the Hub administrator. Rate and retention limits must prevent unbounded failure logs. “Last seen” and a successful installation acknowledgement are distinct events.
