@@ -1,6 +1,6 @@
 # Prototype 1 implementation contract
 
-RuleSend is an original implementation with no Syncthing source copied: one Go binary, SQLite, and an embedded web app. Public product copy and documentation use English. The README stays a short introduction during Prototype 1.
+RuleSend is an original implementation with no Syncthing source copied: one Go binary, SQLite, and an embedded web app. Public product copy and documentation use English. The README provides an overview, architecture, installation steps, and everyday usage, with detailed contracts in docs/.
 
 ## First release scope
 

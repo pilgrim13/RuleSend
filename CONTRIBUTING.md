@@ -1,6 +1,6 @@
 # Contributing
 
-Use English for product copy, documentation, code comments, issues, pull requests, and commit messages. The README is intentionally a short introduction during the prototype phase; detailed onboarding copy will be revisited later.
+Use English for product copy, documentation, code comments, issues, pull requests, and commit messages. Keep the README focused on the product overview, architecture, installation, and everyday use; link to detailed operational documentation.
 
 Start with a small issue describing the user problem and expected behavior. Keep examples synthetic: do not include real rules, device tokens, Hub databases, local backups, or private paths.
 
